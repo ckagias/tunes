@@ -1,0 +1,9 @@
+fastapi>=0.115
+uvicorn[standard]>=0.32
+yt-dlp>=2024.12.0
+sse-starlette>=2.1
+pydantic-settings>=2.6
+
+# Optional: improves resilience against YouTube bot-detection.
+# Requires a running bgutil-ytdlp-pot-provider server (see README "Advanced setup").
+# bgutil-ytdlp-pot-provider>=0.8.0
