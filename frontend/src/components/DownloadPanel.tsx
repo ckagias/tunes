@@ -1,6 +1,14 @@
 import { singleFileUrl, zipFileUrl } from "../api/client";
 import type { TrackProgress } from "../types";
 
+const STYLES = {
+  panel: "flex items-center gap-4",
+  startBtn: "bg-accent text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed",
+  statusLine: "text-sm text-text-muted",
+  errorLine: "text-sm text-danger",
+  saveBtn: "inline-block bg-success text-white text-sm font-medium px-4 py-2.5 rounded-lg no-underline transition-colors hover:brightness-110",
+};
+
 interface DownloadPanelProps {
   onStart: () => void;
   starting: boolean;
@@ -27,24 +35,29 @@ export function DownloadPanel({
     : undefined;
 
   return (
-    <div className="download-panel">
+    <div className={STYLES.panel}>
       {!sessionId && (
-        <button type="button" onClick={onStart} disabled={starting || selectedCount === 0}>
+        <button
+          type="button"
+          className={STYLES.startBtn}
+          onClick={onStart}
+          disabled={starting || selectedCount === 0}
+        >
           {starting ? "Starting…" : `Download ${selectedCount} track${selectedCount === 1 ? "" : "s"}`}
         </button>
       )}
 
-      {sessionId && !isComplete && <p className="status-line">Downloading and tagging…</p>}
+      {sessionId && !isComplete && <p className={STYLES.statusLine}>Downloading and tagging…</p>}
 
       {sessionId && isPlaylist && zipFilename && (
-        <a className="save-button" href={zipFileUrl(sessionId)} download>
+        <a className={STYLES.saveBtn} href={zipFileUrl(sessionId)} download>
           Save {zipFilename}
         </a>
       )}
 
       {sessionId && !isPlaylist && singleDone && (
         <a
-          className="save-button"
+          className={STYLES.saveBtn}
           href={singleFileUrl(sessionId, singleDone.filename!)}
           download
         >
@@ -53,7 +66,7 @@ export function DownloadPanel({
       )}
 
       {sessionId && isComplete && isPlaylist && !zipFilename && (
-        <p className="status-line error">
+        <p className={STYLES.errorLine}>
           All tracks processed, but the archive wasn't created. Check the backend logs.
         </p>
       )}

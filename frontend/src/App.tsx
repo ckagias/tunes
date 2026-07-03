@@ -6,6 +6,16 @@ import { UrlInput } from "./components/UrlInput";
 import { useDownloadProgress } from "./hooks/useDownloadProgress";
 import type { InfoResponse } from "./types";
 
+const STYLES = {
+  page: "min-h-screen flex justify-center",
+  app: "w-full max-w-2xl px-6 pt-10 pb-16",
+  header: "mb-6",
+  title: "text-2xl font-semibold tracking-tight",
+  errorBanner: "bg-danger/10 text-danger text-sm rounded-lg px-4 py-3 mb-4",
+  footer: "mt-8",
+  linkButton: "bg-transparent p-0 text-sm text-accent hover:text-accent-hover underline transition-colors",
+};
+
 type Phase = "idle" | "fetching-info" | "info-ready" | "downloading";
 
 export default function App() {
@@ -81,7 +91,7 @@ export default function App() {
     () => (
       <button
         type="button"
-        className="link-button"
+        className={STYLES.linkButton}
         onClick={() => {
           setPhase("idle");
           setInfo(null);
@@ -97,42 +107,41 @@ export default function App() {
   );
 
   return (
-    <main className="app">
-      <header className="app-header">
-        <h1>tunes</h1>
-        <p className="tagline">
-          Paste a link. Get a fully tagged MP3 with cover art — ready for Apple Music.
-        </p>
-      </header>
+    <div className={STYLES.page}>
+      <main className={STYLES.app}>
+        <header className={STYLES.header}>
+          <h1 className={STYLES.title}>Tunes</h1>
+        </header>
 
-      <UrlInput onSubmit={handleFetchInfo} disabled={phase === "fetching-info"} />
+        <UrlInput onSubmit={handleFetchInfo} disabled={phase === "fetching-info"} />
 
-      {error && <p className="error-banner">{error}</p>}
+        {error && <p className={STYLES.errorBanner}>{error}</p>}
 
-      {info && (
-        <>
-          <TrackList
-            info={info}
-            selected={selected}
-            onToggle={handleToggle}
-            onToggleAll={handleToggleAll}
-            progress={progressState.tracks}
-            selectable={selectable}
-          />
-          <DownloadPanel
-            onStart={handleStartDownload}
-            starting={starting}
-            selectedCount={selected.size}
-            sessionId={sessionId}
-            isPlaylist={info.type === "playlist"}
-            zipFilename={progressState.zipFilename}
-            isComplete={progressState.isComplete}
-            tracks={progressState.tracks}
-          />
-        </>
-      )}
+        {info && (
+          <>
+            <TrackList
+              info={info}
+              selected={selected}
+              onToggle={handleToggle}
+              onToggleAll={handleToggleAll}
+              progress={progressState.tracks}
+              selectable={selectable}
+            />
+            <DownloadPanel
+              onStart={handleStartDownload}
+              starting={starting}
+              selectedCount={selected.size}
+              sessionId={sessionId}
+              isPlaylist={info.type === "playlist"}
+              zipFilename={progressState.zipFilename}
+              isComplete={progressState.isComplete}
+              tracks={progressState.tracks}
+            />
+          </>
+        )}
 
-      {(info || sessionId) && <footer className="app-footer">{resetLink}</footer>}
-    </main>
+        {(info || sessionId) && <footer className={STYLES.footer}>{resetLink}</footer>}
+      </main>
+    </div>
   );
 }

@@ -1,6 +1,15 @@
 import type { InfoResponse, TrackProgress } from "../types";
 import { TrackRow } from "./TrackRow";
 
+const STYLES = {
+  card: "bg-surface border border-border rounded-xl mb-6 overflow-hidden",
+  header: "flex items-baseline gap-3 px-4 py-3.5 border-b border-border",
+  title: "text-base font-semibold flex-1 overflow-hidden text-ellipsis whitespace-nowrap",
+  count: "text-sm text-text-muted",
+  toggleAllBtn: "bg-transparent p-0 text-sm text-accent hover:text-accent-hover underline transition-colors",
+  list: "list-none max-h-105 overflow-y-auto",
+};
+
 interface TrackListProps {
   info: InfoResponse;
   selected: Set<string>;
@@ -19,19 +28,19 @@ export function TrackList({
   selectable,
 }: TrackListProps) {
   return (
-    <div className="track-list">
-      <div className="track-list-header">
-        <h2>{info.title}</h2>
+    <div className={STYLES.card}>
+      <div className={STYLES.header}>
+        <h2 className={STYLES.title}>{info.title}</h2>
         {info.type === "playlist" && (
-          <span className="track-count">{info.count} tracks</span>
+          <span className={STYLES.count}>{info.count} tracks</span>
         )}
         {selectable && info.type === "playlist" && (
-          <button type="button" className="link-button" onClick={onToggleAll}>
+          <button type="button" className={STYLES.toggleAllBtn} onClick={onToggleAll}>
             {selected.size === info.tracks.length ? "Deselect all" : "Select all"}
           </button>
         )}
       </div>
-      <ul>
+      <ul className={STYLES.list}>
         {info.tracks.map((track) => (
           <TrackRow
             key={track.url}
