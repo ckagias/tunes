@@ -1,5 +1,6 @@
 """
-YouTube source — the only fully-implemented source in phase 1.
+YouTube source — the only implemented source for now (Spotify/SoundCloud
+were tried and rolled back; revisit them later, see README roadmap).
 
 Ports the /api/info and download logic from the original Flask app (app.py)
 with no behavior changes: same yt-dlp options, same single-vs-playlist
@@ -63,6 +64,7 @@ class YouTubeSource(Source):
                     duration=fmt_duration(entry.get("duration")),
                     thumbnail=entry.get("thumbnail") or "",
                     uploader=entry.get("uploader") or entry.get("channel") or "",
+                    source=self.name,
                 )
             )
 
@@ -84,6 +86,7 @@ class YouTubeSource(Source):
             duration=fmt_duration(info.get("duration")),
             thumbnail=info.get("thumbnail") or "",
             uploader=info.get("uploader") or info.get("channel") or "",
+            source=self.name,
         )
         return InfoResponse(
             type="single",
