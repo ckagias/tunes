@@ -14,8 +14,16 @@ import yt_dlp.utils
 
 from app.models import InfoResponse, TrackInfo
 from app.services.media import fmt_duration
-from app.services.ydl_opts import download_ydl_opts, info_ydl_opts
+from app.services.ydl_opts import (
+    DEFAULT_AUDIO_QUALITY,
+    base_ydl_opts,
+    download_ydl_opts,
+    info_ydl_opts,
+)
 from app.sources.base import Source
+
+MIN_AUDIO_QUALITY = 64
+MAX_AUDIO_QUALITY = 320
 
 
 class YouTubeSource(Source):
@@ -114,7 +122,8 @@ class YouTubeSource(Source):
                     captured_path.append(fp)
             pp_hook(d)
 
-        ydl_opts = download_ydl_opts(music_dir, progress_hook, wrapped_pp_hook)
+        quality = self._resolve_target_quality(url)
+        ydl_opts = download_ydl_opts(music_dir, progress_hook, wrapped_pp_hook, quality=quality)
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
@@ -129,6 +138,28 @@ class YouTubeSource(Source):
                 if os.path.isfile(candidate):
                     return candidate
         return None
+
+    def _resolve_target_quality(self, url: str) -> int:
+        """
+        Look up the bitrate of the audio format yt-dlp would actually
+        download, so the ffmpeg re-encode targets that instead of a fixed
+        high bitrate. Re-encoding above the source's real bitrate doesn't
+        recover any detail — it just produces a larger file for no gain.
+
+        This is a metadata-only lookup (no bytes downloaded), the same kind
+        already used by fetch_info(). Falls back to DEFAULT_AUDIO_QUALITY if
+        the bitrate can't be determined for any reason.
+        """
+        try:
+            probe_opts = {**base_ydl_opts(), "format": "bestaudio/best"}
+            with yt_dlp.YoutubeDL(probe_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+            abr = info.get("abr") if info else None
+            if abr:
+                return max(MIN_AUDIO_QUALITY, min(round(abr), MAX_AUDIO_QUALITY))
+        except Exception:
+            pass
+        return DEFAULT_AUDIO_QUALITY
 
 
 def sanitize_filename(name: str) -> str:

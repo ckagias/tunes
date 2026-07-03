@@ -21,9 +21,10 @@ If you find this useful, feel free to leave a ⭐ to help others find it!
 ## Features
 
 - 🎵 **Paste-a-link downloading:** any YouTube video or playlist URL works through the same flow.
-- 🏷️ **Automatic tagging:** every track comes out as a 320kbps MP3 with title, artist, album, and embedded cover art which means no manual editing.
+- 🏷️ **Automatic tagging:** every track comes out as an MP3 with title, artist, album, and embedded cover art which means no manual editing.
 - ⚡ **Live progress:** per-track download/convert progress streamed to the page in real time over SSE.
 - 📦 **Playlists & albums:** select exactly which tracks you want, download the rest as a single zip with cover art included.
+- 🚀 **Concurrent, quality-matched downloads:** up to 8 tracks download at once, each re-encoded at its actual source bitrate (capped at 320kbps) instead of a fixed rate, so playlists finish faster with no wasted file size.
 - 🧹 **Ephemeral by design:** nothing is stored server-side beyond the time it takes to hand a file to your browser.
 - 🧩 **Pluggable source architecture:** the download logic is written behind a small interface so other platforms can be added later without touching routes (see [Project layout](#project-layout)).
 
@@ -35,7 +36,7 @@ If you find this useful, feel free to leave a ⭐ to help others find it!
 
 1. Paste a URL → the backend fetches metadata (title, thumbnail, duration) without downloading anything.
 2. Pick which tracks you want (for playlists/albums) → hit download.
-3. The backend downloads each track, converts it to a 320kbps MP3, embeds ID3 tags (title/artist/album) and the cover art, and reports live progress back to the page.
+3. The backend downloads up to 8 tracks at once, converts each to an MP3 matching its source bitrate (capped at 320kbps), embeds ID3 tags (title/artist/album) and the cover art, and reports live progress back to the page.
 4. Single tracks download directly as an `.mp3` [playlists download as a `.zip` (unzip it, then drag the folder into your music library)].
 
 ---

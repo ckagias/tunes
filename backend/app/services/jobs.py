@@ -12,15 +12,27 @@ correct bridge.
 Event contract (unchanged from the original app, so the frontend can consume
 it identically): started, progress, converting, track_done, track_error,
 zipping, zip_ready, all_done.
+
+Tracks within a single job download concurrently (bounded worker pool, see
+MAX_CONCURRENT_DOWNLOADS) rather than one at a time — most per-track time is
+network I/O wait, not CPU, so this gives a roughly proportional speedup on
+large playlists. This is safe because: session.queue is a stdlib
+queue.Queue (thread-safe for concurrent put()); each worker writes a
+different session.files[url] key, never the same key concurrently; and each
+download_track() call constructs its own fresh yt-dlp instance, so there's
+no shared mutable state across workers.
 """
 
 import asyncio
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 from app.services import media
 from app.services.sessions import Session, store
 from app.sources import registry
 from app.sources.youtube import sanitize_filename
+
+MAX_CONCURRENT_DOWNLOADS = 8
 
 
 def _make_hooks(q, url: str, title: str):
@@ -62,6 +74,49 @@ def _make_hooks(q, url: str, title: str):
     return progress_hook, pp_hook
 
 
+def _download_one(
+    session: Session,
+    url: str,
+    title: str,
+    music_dir: str,
+    is_playlist: bool,
+) -> None:
+    """Download+tag a single track and report its events. Runs on a pool worker."""
+    q = session.queue
+    progress_hook, pp_hook = _make_hooks(q, url, title)
+
+    try:
+        q.put({"type": "started", "url": url, "title": title})
+        source = registry.resolve(url)
+        final_path = source.download_track(url, title, music_dir, progress_hook, pp_hook)
+
+        if final_path and os.path.isfile(final_path):
+            session.files[url] = final_path
+            if is_playlist:
+                q.put({"type": "track_done", "url": url, "title": title})
+            else:
+                q.put(
+                    {
+                        "type": "track_done",
+                        "url": url,
+                        "title": title,
+                        "filename": os.path.basename(final_path),
+                        "session_id": session.session_id,
+                    }
+                )
+        else:
+            q.put(
+                {
+                    "type": "track_error",
+                    "url": url,
+                    "title": title,
+                    "message": "Output file not found after conversion.",
+                }
+            )
+    except Exception as e:
+        q.put({"type": "track_error", "url": url, "title": title, "message": str(e)})
+
+
 def run_download_job(
     session: Session,
     urls: list[str],
@@ -72,44 +127,18 @@ def run_download_job(
 ) -> None:
     """
     Synchronous job body — runs on a worker thread via run_in_executor.
-    Mirrors the original Flask app's do_download() closely.
+    Mirrors the original Flask app's do_download() closely, but downloads
+    tracks concurrently (bounded pool) instead of one at a time.
     """
     q = session.queue
 
-    for url in urls:
-        title = titles.get(url, url)
-        progress_hook, pp_hook = _make_hooks(q, url, title)
-
-        try:
-            q.put({"type": "started", "url": url, "title": title})
-            source = registry.resolve(url)
-            final_path = source.download_track(url, title, music_dir, progress_hook, pp_hook)
-
-            if final_path and os.path.isfile(final_path):
-                session.files[url] = final_path
-                if is_playlist:
-                    q.put({"type": "track_done", "url": url, "title": title})
-                else:
-                    q.put(
-                        {
-                            "type": "track_done",
-                            "url": url,
-                            "title": title,
-                            "filename": os.path.basename(final_path),
-                            "session_id": session.session_id,
-                        }
-                    )
-            else:
-                q.put(
-                    {
-                        "type": "track_error",
-                        "url": url,
-                        "title": title,
-                        "message": "Output file not found after conversion.",
-                    }
-                )
-        except Exception as e:
-            q.put({"type": "track_error", "url": url, "title": title, "message": str(e)})
+    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DOWNLOADS) as pool:
+        futures = [
+            pool.submit(_download_one, session, url, titles.get(url, url), music_dir, is_playlist)
+            for url in urls
+        ]
+        for future in futures:
+            future.result()  # propagate any unexpected exception; also waits for completion
 
     if is_playlist:
         q.put({"type": "zipping", "message": "Creating archive…"})

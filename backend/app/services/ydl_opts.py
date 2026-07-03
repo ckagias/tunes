@@ -11,6 +11,12 @@ import os
 
 from app.config import settings
 
+# Fallback target bitrate (kbps) when a source's actual bitrate can't be
+# determined. Used instead of always re-encoding to a fixed high bitrate
+# like 320 — most YouTube audio sources are well below that, so forcing 320
+# just inflates file size without recovering any real audio detail.
+DEFAULT_AUDIO_QUALITY = 192
+
 
 def base_ydl_opts() -> dict:
     """
@@ -48,21 +54,28 @@ def info_ydl_opts() -> dict:
     }
 
 
-def build_audio_postprocessors() -> list[dict]:
+def build_audio_postprocessors(quality: int = DEFAULT_AUDIO_QUALITY) -> list[dict]:
     """
     The three-stage tagging chain:
-      1. Extract audio to 320kbps MP3
+      1. Extract audio to MP3 at `quality` kbps (should match the source's
+         actual bitrate — re-encoding above it just inflates file size with
+         no real quality gain, since you can't recover detail a lossy
+         source never had)
       2. Embed title/artist/album/etc. metadata
       3. Embed cover art thumbnail
 
     This is the single source of truth for "Apple-Music-ready" output —
     reuse this everywhere audio is downloaded, regardless of source.
+
+    Values above 10 are passed straight through to ffmpeg as an exact
+    target kbps (`-b:a {quality}k`) — see yt-dlp's
+    FFmpegExtractAudioPP._quality_args.
     """
     return [
         {
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
-            "preferredquality": "320",
+            "preferredquality": str(quality),
         },
         {
             "key": "FFmpegMetadata",
@@ -75,13 +88,15 @@ def build_audio_postprocessors() -> list[dict]:
     ]
 
 
-def download_ydl_opts(music_dir: str, progress_hook, pp_hook) -> dict:
+def download_ydl_opts(
+    music_dir: str, progress_hook, pp_hook, quality: int = DEFAULT_AUDIO_QUALITY
+) -> dict:
     """Options for a single-track download, with hooks wired up."""
     return {
         **base_ydl_opts(),
         "format": "bestaudio/best",
         "writethumbnail": True,
-        "postprocessors": build_audio_postprocessors(),
+        "postprocessors": build_audio_postprocessors(quality=quality),
         "outtmpl": os.path.join(music_dir, "%(title)s.%(ext)s"),
         "progress_hooks": [progress_hook],
         "postprocessor_hooks": [pp_hook],
