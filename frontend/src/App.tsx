@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { endSession, getInfo, startDownload } from "./api/client";
 import { DownloadPanel } from "./components/DownloadPanel";
 import { TrackList } from "./components/TrackList";
@@ -12,8 +12,6 @@ const STYLES = {
   header: "mb-6",
   title: "text-2xl font-semibold tracking-tight",
   errorBanner: "bg-danger/10 text-danger text-sm rounded-lg px-4 py-3 mb-4",
-  footer: "mt-8",
-  linkButton: "bg-transparent p-0 text-sm text-accent hover:text-accent-hover underline transition-colors",
 };
 
 type Phase = "idle" | "fetching-info" | "info-ready" | "downloading";
@@ -102,25 +100,14 @@ export default function App() {
 
   const selectable = phase === "info-ready";
 
-  const resetLink = useMemo(
-    () => (
-      <button
-        type="button"
-        className={STYLES.linkButton}
-        onClick={() => {
-          if (sessionIdRef.current) endSession(sessionIdRef.current);
-          setPhase("idle");
-          setInfo(null);
-          setSessionId(null);
-          setSelected(new Set());
-          setError(null);
-        }}
-      >
-        Start over
-      </button>
-    ),
-    [],
-  );
+  const handleReset = () => {
+    if (sessionIdRef.current) endSession(sessionIdRef.current);
+    setPhase("idle");
+    setInfo(null);
+    setSessionId(null);
+    setSelected(new Set());
+    setError(null);
+  };
 
   return (
     <div className={STYLES.page}>
@@ -152,11 +139,10 @@ export default function App() {
               zipFilename={progressState.zipFilename}
               isComplete={progressState.isComplete}
               tracks={progressState.tracks}
+              onReset={handleReset}
             />
           </>
         )}
-
-        {(info || sessionId) && <footer className={STYLES.footer}>{resetLink}</footer>}
       </main>
     </div>
   );

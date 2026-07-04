@@ -26,6 +26,14 @@ import json
 import re
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+
+# Bounded pool for fetching each playlist track's own cover art concurrently
+# (see get_playlist) — mirrors the download job's worker pool
+# (services/jobs.py MAX_CONCURRENT_DOWNLOADS), same rationale: this is
+# network I/O wait, not CPU, so a bounded pool gives a proportional speedup
+# without hammering Spotify with dozens of simultaneous requests.
+_THUMBNAIL_FETCH_WORKERS = 8
 
 _HEADERS = {
     "User-Agent": (
@@ -95,7 +103,7 @@ def get_track(track_id: str) -> dict:
     }
 
 
-def _track_from_tracklist_item(item: dict, album: str = "") -> dict:
+def _track_from_tracklist_item(item: dict, album: str = "", thumbnail: str = "") -> dict:
     # subtitle is a raw "Artist A,\xa0Artist B" string (non-breaking spaces
     # after each comma) — normalize so it matches _artists_str's plain
     # ", "-joined format used elsewhere, and doesn't poison search queries.
@@ -106,8 +114,16 @@ def _track_from_tracklist_item(item: dict, album: str = "") -> dict:
         "artist": artist,
         "album": album,
         "duration_ms": item.get("duration") or 0,
-        "thumbnail": "",
+        "thumbnail": thumbnail,
     }
+
+
+def _track_thumbnail(track_id: str) -> str:
+    """Best-effort fetch of a single track's own cover art. Returns "" on any failure."""
+    try:
+        return get_track(track_id)["thumbnail"]
+    except Exception:
+        return ""
 
 
 def get_album(album_id: str) -> tuple[str, str, list[dict]]:
@@ -115,8 +131,10 @@ def get_album(album_id: str) -> tuple[str, str, list[dict]]:
     entity = _fetch_entity("album", album_id)
     title = entity.get("name") or "Album"
     thumb = _best_image((entity.get("visualIdentity") or {}).get("image", []))
+    # Every track on an album shares the same cover, so no need for a
+    # per-track lookup here — unlike playlists (see get_playlist).
     tracks = [
-        _track_from_tracklist_item(item, album=title)
+        _track_from_tracklist_item(item, album=title, thumbnail=thumb)
         for item in entity.get("trackList") or []
     ]
     return title, thumb, tracks
@@ -127,5 +145,20 @@ def get_playlist(playlist_id: str) -> tuple[str, str, list[dict]]:
     entity = _fetch_entity("playlist", playlist_id)
     title = entity.get("name") or "Playlist"
     thumb = _best_image((entity.get("coverArt") or {}).get("sources", []))
-    tracks = [_track_from_tracklist_item(item) for item in entity.get("trackList") or []]
+    items = entity.get("trackList") or []
+
+    # Playlist tracklist items don't carry their own cover art (unlike
+    # albums, playlist tracks can come from many different albums), so each
+    # track's real art needs its own embed-page fetch. Done concurrently
+    # (bounded pool) since this is pure network I/O wait — a 30+ track
+    # playlist fetched serially would add many seconds just for thumbnails.
+    # Falls back to the playlist's own cover per-track if a fetch fails.
+    track_ids = [(item.get("uri") or "").rsplit(":", 1)[-1] for item in items]
+    with ThreadPoolExecutor(max_workers=_THUMBNAIL_FETCH_WORKERS) as pool:
+        thumbnails = list(pool.map(_track_thumbnail, track_ids))
+
+    tracks = [
+        _track_from_tracklist_item(item, thumbnail=thumbnails[i] or thumb)
+        for i, item in enumerate(items)
+    ]
     return title, thumb, tracks

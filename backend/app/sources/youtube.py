@@ -43,13 +43,31 @@ def info_response_from_ytdlp(info: dict, url: str, source_name: str) -> InfoResp
     return _single_info(info, url, source_name)
 
 
+def _entry_thumbnail(entry: dict) -> str:
+    """
+    Best thumbnail URL for a flat-playlist entry. info_ydl_opts() uses
+    extract_flat="in_playlist", under which yt-dlp never populates the plain
+    `thumbnail` field on playlist/album entries (confirmed empirically: it's
+    always None) — only the `thumbnails` list (sized variants, no field
+    guaranteed pre-sorted) is populated. Falls back to `thumbnail` anyway in
+    case a future yt-dlp version (or a non-flat entry) does set it directly.
+    """
+    if entry.get("thumbnail"):
+        return entry["thumbnail"]
+    thumbs = entry.get("thumbnails") or []
+    if not thumbs:
+        return ""
+    best = max(thumbs, key=lambda t: (t.get("width") or 0) * (t.get("height") or 0))
+    return best.get("url", "")
+
+
 def _playlist_info(info: dict, source_name: str) -> InfoResponse:
     playlist_thumbnail = info.get("thumbnail") or ""
     first_entry_thumb = ""
     entries = info.get("entries") or []
     for entry in entries:
-        if entry and entry.get("thumbnail"):
-            first_entry_thumb = entry["thumbnail"]
+        if entry and _entry_thumbnail(entry):
+            first_entry_thumb = _entry_thumbnail(entry)
             break
 
     tracks: list[TrackInfo] = []
@@ -68,7 +86,7 @@ def _playlist_info(info: dict, source_name: str) -> InfoResponse:
                 title=entry.get("title") or vid_id,
                 url=vid_url,
                 duration=fmt_duration(entry.get("duration")),
-                thumbnail=entry.get("thumbnail") or "",
+                thumbnail=_entry_thumbnail(entry),
                 uploader=entry.get("uploader") or entry.get("channel") or "",
                 source=source_name,
             )

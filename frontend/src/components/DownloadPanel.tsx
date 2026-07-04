@@ -7,6 +7,7 @@ const STYLES = {
   statusLine: "text-sm text-text-muted",
   errorLine: "text-sm text-danger",
   saveBtn: "inline-block bg-success text-white text-sm font-medium px-4 py-2.5 rounded-lg no-underline transition-colors hover:brightness-110",
+  newDownloadBtn: "bg-transparent border border-border text-sm font-medium px-4 py-2.5 rounded-lg transition-colors hover:border-accent hover:text-accent",
 };
 
 interface DownloadPanelProps {
@@ -18,6 +19,7 @@ interface DownloadPanelProps {
   zipFilename: string | null;
   isComplete: boolean;
   tracks: Map<string, TrackProgress>;
+  onReset: () => void;
 }
 
 export function DownloadPanel({
@@ -29,6 +31,7 @@ export function DownloadPanel({
   zipFilename,
   isComplete,
   tracks,
+  onReset,
 }: DownloadPanelProps) {
   const singleDone = !isPlaylist
     ? [...tracks.values()].find((t) => t.status === "done" && t.filename)
@@ -69,6 +72,12 @@ export function DownloadPanel({
         <p className={STYLES.errorLine}>
           All tracks processed, but the archive wasn't created. Check the backend logs.
         </p>
+      )}
+
+      {sessionId && isComplete && (
+        <button type="button" className={STYLES.newDownloadBtn} onClick={onReset}>
+          New Download
+        </button>
       )}
     </div>
   );
