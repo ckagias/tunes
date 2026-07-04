@@ -91,13 +91,24 @@ def build_audio_postprocessors(quality: int = DEFAULT_AUDIO_QUALITY) -> list[dic
 def download_ydl_opts(
     music_dir: str, progress_hook, pp_hook, quality: int = DEFAULT_AUDIO_QUALITY
 ) -> dict:
-    """Options for a single-track download, with hooks wired up."""
+    """
+    Options for a single-track download, with hooks wired up.
+
+    outtmpl includes the video id even though it's not shown anywhere in the
+    UI: tracks download concurrently (see jobs.MAX_CONCURRENT_DOWNLOADS)
+    into the same music_dir, and Spotify tracks in particular resolve via a
+    YouTube Music *search* rather than a direct URL — so two different
+    Spotify tracks in one playlist can easily resolve to videos that share
+    (or sanitize down to) the same title. Without a unique id in the
+    filename, the second track's write silently overwrote the first one's
+    file on disk, quietly dropping a track from the final zip.
+    """
     return {
         **base_ydl_opts(),
         "format": "bestaudio/best",
         "writethumbnail": True,
         "postprocessors": build_audio_postprocessors(quality=quality),
-        "outtmpl": os.path.join(music_dir, "%(title)s.%(ext)s"),
+        "outtmpl": os.path.join(music_dir, "%(title)s [%(id)s].%(ext)s"),
         "progress_hooks": [progress_hook],
         "postprocessor_hooks": [pp_hook],
     }

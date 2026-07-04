@@ -13,7 +13,9 @@ instead of YouTube's own."
 
 import os
 import re
+import threading
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 
 import yt_dlp
 import yt_dlp.utils
@@ -30,6 +32,14 @@ from app.sources.base import Source
 
 MIN_AUDIO_QUALITY = 64
 MAX_AUDIO_QUALITY = 320
+
+# Bounded pool for resolving each playlist/album entry's real uploader (see
+# _resolve_uploader) — mirrors the download job's worker pool
+# (services/jobs.py MAX_CONCURRENT_DOWNLOADS) and spotify_client's thumbnail
+# pool: this is network I/O wait, not CPU, so a bounded pool gives a
+# proportional speedup without hammering YouTube with dozens of simultaneous
+# requests.
+_UPLOADER_FETCH_WORKERS = 8
 
 
 def info_response_from_ytdlp(info: dict, url: str, source_name: str) -> InfoResponse:
@@ -61,6 +71,18 @@ def _entry_thumbnail(entry: dict) -> str:
     return best.get("url", "")
 
 
+def _resolve_uploader(vid_url: str) -> str:
+    """Best-effort fetch of a single video's real uploader/channel name. Returns "" on any failure."""
+    try:
+        with yt_dlp.YoutubeDL({**base_ydl_opts(), "extract_flat": False, "skip_download": True}) as ydl:
+            full = ydl.extract_info(vid_url, download=False)
+        if not full:
+            return ""
+        return full.get("uploader") or full.get("channel") or ""
+    except Exception:
+        return ""
+
+
 def _playlist_info(info: dict, source_name: str) -> InfoResponse:
     playlist_thumbnail = info.get("thumbnail") or ""
     first_entry_thumb = ""
@@ -70,7 +92,8 @@ def _playlist_info(info: dict, source_name: str) -> InfoResponse:
             first_entry_thumb = _entry_thumbnail(entry)
             break
 
-    tracks: list[TrackInfo] = []
+    valid_entries = []
+    vid_urls: list[str] = []
     for entry in entries:
         if not entry:
             continue
@@ -80,17 +103,30 @@ def _playlist_info(info: dict, source_name: str) -> InfoResponse:
         )
         if not vid_url:
             continue
-        tracks.append(
-            TrackInfo(
-                id=vid_id,
-                title=entry.get("title") or vid_id,
-                url=vid_url,
-                duration=fmt_duration(entry.get("duration")),
-                thumbnail=_entry_thumbnail(entry),
-                uploader=entry.get("uploader") or entry.get("channel") or "",
-                source=source_name,
-            )
+        valid_entries.append((entry, vid_id, vid_url))
+        vid_urls.append(vid_url)
+
+    # info_ydl_opts()'s extract_flat="in_playlist" mode never populates
+    # uploader/channel on playlist/album entries (confirmed empirically:
+    # every uploader-ish field is absent, not just empty) — unlike
+    # thumbnails, there's no fallback field to read instead. The only way to
+    # get the real artist/uploader is a full per-video resolve, done
+    # concurrently (bounded pool) since this is pure network I/O wait.
+    with ThreadPoolExecutor(max_workers=_UPLOADER_FETCH_WORKERS) as pool:
+        uploaders = list(pool.map(_resolve_uploader, vid_urls))
+
+    tracks: list[TrackInfo] = [
+        TrackInfo(
+            id=vid_id,
+            title=entry.get("title") or vid_id,
+            url=vid_url,
+            duration=fmt_duration(entry.get("duration")),
+            thumbnail=_entry_thumbnail(entry),
+            uploader=uploaders[i],
+            source=source_name,
         )
+        for i, (entry, vid_id, vid_url) in enumerate(valid_entries)
+    ]
 
     return InfoResponse(
         type="playlist",
@@ -384,15 +420,51 @@ def download_with_overrides(
         ydl.process_ie_result(info, download=True)
 
     if captured_path:
-        return captured_path[0]
+        return _strip_id_suffix(captured_path[0])
 
     # Fall back to scanning music_dir for a new .mp3 (mirrors original app.py behavior).
     for fname in os.listdir(music_dir):
         if fname.endswith(".mp3"):
             candidate = os.path.join(music_dir, fname)
             if os.path.isfile(candidate):
-                return candidate
+                return _strip_id_suffix(candidate)
     return None
+
+
+_ID_SUFFIX_RE = re.compile(r" \[[^\[\]]+\](\.\w+)$")
+
+# Guards the exists-check + rename below so two concurrent workers (see
+# jobs.MAX_CONCURRENT_DOWNLOADS) finishing same-titled tracks at the same
+# instant can't both pass the "clean name free" check before either renames
+# — that race would let one silently clobber the other, exactly the bug
+# this whole [video_id] scheme exists to avoid.
+_rename_lock = threading.Lock()
+
+
+def _strip_id_suffix(path: str) -> str:
+    """
+    Rename "Title [video_id].mp3" (see download_ydl_opts' outtmpl) down to
+    "Title.mp3" now that the download is finished and the id has done its
+    job of keeping concurrent same-titled downloads from colliding on disk.
+    If the clean name is already taken (a genuine duplicate title within the
+    same playlist), falls back to a numeric suffix rather than overwriting
+    another finished track.
+    """
+    match = _ID_SUFFIX_RE.search(path)
+    if not match:
+        return path
+    clean = path[: match.start()] + match.group(1)
+    base, ext = os.path.splitext(clean)
+    with _rename_lock:
+        if not os.path.exists(clean):
+            os.rename(path, clean)
+            return clean
+        n = 2
+        while os.path.exists(f"{base} ({n}){ext}"):
+            n += 1
+        numbered = f"{base} ({n}){ext}"
+        os.rename(path, numbered)
+        return numbered
 
 
 class YouTubeSource(Source):
