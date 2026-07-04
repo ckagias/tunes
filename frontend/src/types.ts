@@ -7,6 +7,8 @@ export interface TrackInfo {
   duration: string;
   thumbnail: string;
   uploader: string;
+  source: string;
+  album: string;
 }
 
 export interface InfoResponse {

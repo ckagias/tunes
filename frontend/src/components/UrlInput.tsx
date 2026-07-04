@@ -25,7 +25,7 @@ export function UrlInput({ onSubmit, disabled }: UrlInputProps) {
       <input
         type="text"
         className={STYLES.input}
-        placeholder="Paste a YouTube video or playlist link…"
+        placeholder="Paste a YouTube or Spotify link…"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         disabled={disabled}

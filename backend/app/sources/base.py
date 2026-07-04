@@ -2,7 +2,7 @@
 The Source interface: everything a "place a song/playlist link can come from"
 needs to implement. Routes only ever talk to this interface via the registry
 (see registry.py) — they never import a concrete source directly. That's the
-seam that lets Spotify/SoundCloud be added later without touching routes.
+seam that lets new platforms be added later without touching routes.
 """
 
 from abc import ABC, abstractmethod
@@ -11,7 +11,7 @@ from app.models import InfoResponse
 
 
 class Source(ABC):
-    """One origin (YouTube, Spotify, SoundCloud, ...)."""
+    """One origin (YouTube, Spotify, ...)."""
 
     name: str
 

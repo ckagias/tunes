@@ -133,7 +133,7 @@ Components live in `frontend/src/components/`. The app is intentionally simple: 
 
 ### Commits
 
-- Use short, imperative commit messages: `add SoundCloud source`, `fix zip cleanup on serve error`.
+- Use short, imperative commit messages: `add Bandcamp source`, `fix zip cleanup on serve error`.
 - One logical change per commit.
 
 ### What not to add

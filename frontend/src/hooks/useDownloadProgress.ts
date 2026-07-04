@@ -81,9 +81,14 @@ export function useDownloadProgress(sessionId: string | null) {
   stateRef.current = state;
 
   useEffect(() => {
-    if (!sessionId) return;
-
+    // Always reset first, even when sessionId is cleared (e.g. "Start
+    // over") — otherwise a stale zipFilename/tracks from a previous session
+    // lingers in state and, if a new session starts before its own
+    // zip_ready arrives, the Save button renders pointing at the new
+    // session's not-yet-ready zip using the old filename.
     setState({ tracks: new Map(), zipFilename: null, isComplete: false });
+
+    if (!sessionId) return;
 
     const close = openProgressStream(sessionId, (event) => {
       setState((prev) => reduce(prev, event));

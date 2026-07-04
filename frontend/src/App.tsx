@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { getInfo, startDownload } from "./api/client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { endSession, getInfo, startDownload } from "./api/client";
 import { DownloadPanel } from "./components/DownloadPanel";
 import { TrackList } from "./components/TrackList";
 import { UrlInput } from "./components/UrlInput";
@@ -28,7 +28,22 @@ export default function App() {
 
   const progressState = useDownloadProgress(sessionId);
 
+  // Always holds the latest sessionId so the beforeunload handler (added
+  // once on mount) and other cleanup call sites can read the current value
+  // without stale-closure issues.
+  const sessionIdRef = useRef<string | null>(null);
+  sessionIdRef.current = sessionId;
+
+  useEffect(() => {
+    const handleUnload = () => {
+      if (sessionIdRef.current) endSession(sessionIdRef.current);
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, []);
+
   const handleFetchInfo = async (url: string) => {
+    if (sessionId) endSession(sessionId);
     setError(null);
     setPhase("fetching-info");
     setInfo(null);
@@ -93,6 +108,7 @@ export default function App() {
         type="button"
         className={STYLES.linkButton}
         onClick={() => {
+          if (sessionIdRef.current) endSession(sessionIdRef.current);
           setPhase("idle");
           setInfo(null);
           setSessionId(null);

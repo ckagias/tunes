@@ -8,6 +8,8 @@ class TrackInfo(BaseModel):
     duration: str = ""
     thumbnail: str = ""
     uploader: str = ""
+    source: str = ""  # "youtube" | "spotify"
+    album: str = ""
 
 
 class InfoRequest(BaseModel):
