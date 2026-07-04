@@ -1,11 +1,4 @@
-"""
-In-memory session registry. Each session tracks a temp directory, a progress
-queue, and the files produced during a download job. Nothing is persisted —
-sessions live only as long as the process and are wiped once their files are
-served to the browser (or the process restarts).
-
-Ported from the original Flask app's `sessions` dict + BASE_TEMP_DIR model.
-"""
+"""In-memory session registry: temp dir, progress queue, and produced files per download job. Not persisted."""
 
 import os
 import queue
@@ -47,5 +40,4 @@ class SessionStore:
             shutil.rmtree(session.session_dir, ignore_errors=True)
 
 
-# Module-level singleton, mirroring the Flask app's global `sessions` dict.
 store = SessionStore()

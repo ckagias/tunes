@@ -26,9 +26,7 @@ export default function App() {
 
   const progressState = useDownloadProgress(sessionId);
 
-  // Always holds the latest sessionId so the beforeunload handler (added
-  // once on mount) and other cleanup call sites can read the current value
-  // without stale-closure issues.
+  // Keeps the beforeunload handler reading the latest sessionId, avoiding a stale closure.
   const sessionIdRef = useRef<string | null>(null);
   sessionIdRef.current = sessionId;
 

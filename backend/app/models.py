@@ -23,13 +23,7 @@ class InfoResponse(BaseModel):
     thumbnail: str = ""
     count: int
     tracks: list[TrackInfo]
-    # True only for an actual playlist link (a curated, user-ordered track
-    # list). type is "playlist" for albums too, but albums don't set this —
-    # "is_playlist" elsewhere in the API (DownloadRequest/DownloadResponse)
-    # already means "is a zip-producing collection" (playlist OR album), so
-    # this is deliberately a different name to avoid colliding with that.
-    # Drives whether the download zip gets an .m3u8 alongside the MP3s,
-    # since an album's track order is already implied by its own metadata.
+    # True only for a real playlist, not an album (type is "playlist" for both) — drives .m3u8 generation.
     is_true_playlist: bool = False
 
 

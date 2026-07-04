@@ -1,25 +1,7 @@
-"""
-Real Spotify metadata via Spotify's public embed pages — no developer
-account, no OAuth, no bearer tokens, no API calls at all.
+"""Spotify metadata via public embed pages (open.spotify.com/embed/...) — no OAuth or API calls needed.
 
-Mechanism: https://open.spotify.com/embed/{track,album,playlist}/{id} is the
-page Spotify serves for embedded players (e.g. iframes on blogs). It's a
-plain server-rendered Next.js page containing a <script id="__NEXT_DATA__">
-tag with the full track/album/playlist JSON (title, artists, cover art,
-duration, and for albums/playlists the full track list) — no auth needed at
-all, just an HTTP GET.
-
-This replaces an earlier version of this module that used Spotify's
-anonymous web-player token endpoint (open.spotify.com/get_access_token) to
-call api.spotify.com directly. That endpoint started returning HTTP 403 in
-testing, apparently now gated in a way the embed page isn't. Embed pages
-don't expose per-track genre, so genre tagging for Spotify tracks was
-dropped instead of trying to resurrect it from a separate source.
-
-CAVEAT: this depends on Spotify continuing to server-render this JSON blob
-into the embed page. It could change if Spotify redesigns that page. All
-functions here fail by raising, and callers (sources/spotify.py) should
-translate failures into a clear user-facing error rather than crashing.
+Parses the __NEXT_DATA__ JSON blob Spotify server-renders into that page. Fragile to a Spotify redesign;
+callers should treat failures as user-facing errors, not crashes.
 """
 
 import json
@@ -28,11 +10,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-# Bounded pool for fetching each playlist track's own cover art concurrently
-# (see get_playlist) — mirrors the download job's worker pool
-# (services/jobs.py MAX_CONCURRENT_DOWNLOADS), same rationale: this is
-# network I/O wait, not CPU, so a bounded pool gives a proportional speedup
-# without hammering Spotify with dozens of simultaneous requests.
+# Bounded pool for concurrent per-track cover art fetches in get_playlist — I/O bound, mirrors jobs.MAX_CONCURRENT_DOWNLOADS.
 _THUMBNAIL_FETCH_WORKERS = 8
 
 _HEADERS = {
@@ -104,9 +82,7 @@ def get_track(track_id: str) -> dict:
 
 
 def _track_from_tracklist_item(item: dict, album: str = "", thumbnail: str = "") -> dict:
-    # subtitle is a raw "Artist A,\xa0Artist B" string (non-breaking spaces
-    # after each comma) — normalize so it matches _artists_str's plain
-    # ", "-joined format used elsewhere, and doesn't poison search queries.
+    # subtitle uses non-breaking spaces after commas — normalize to match _artists_str's format.
     artist = (item.get("subtitle") or "").replace("\xa0", " ")
     return {
         "id": (item.get("uri") or "").rsplit(":", 1)[-1],
@@ -119,7 +95,7 @@ def _track_from_tracklist_item(item: dict, album: str = "", thumbnail: str = "")
 
 
 def _track_thumbnail(track_id: str) -> str:
-    """Best-effort fetch of a single track's own cover art. Returns "" on any failure."""
+    """Best-effort fetch of a single track's own cover art."""
     try:
         return get_track(track_id)["thumbnail"]
     except Exception:
@@ -131,8 +107,7 @@ def get_album(album_id: str) -> tuple[str, str, list[dict]]:
     entity = _fetch_entity("album", album_id)
     title = entity.get("name") or "Album"
     thumb = _best_image((entity.get("visualIdentity") or {}).get("image", []))
-    # Every track on an album shares the same cover, so no need for a
-    # per-track lookup here — unlike playlists (see get_playlist).
+    # Every track on an album shares the same cover — no per-track lookup needed, unlike playlists.
     tracks = [
         _track_from_tracklist_item(item, album=title, thumbnail=thumb)
         for item in entity.get("trackList") or []
@@ -147,12 +122,8 @@ def get_playlist(playlist_id: str) -> tuple[str, str, list[dict]]:
     thumb = _best_image((entity.get("coverArt") or {}).get("sources", []))
     items = entity.get("trackList") or []
 
-    # Playlist tracklist items don't carry their own cover art (unlike
-    # albums, playlist tracks can come from many different albums), so each
-    # track's real art needs its own embed-page fetch. Done concurrently
-    # (bounded pool) since this is pure network I/O wait — a 30+ track
-    # playlist fetched serially would add many seconds just for thumbnails.
-    # Falls back to the playlist's own cover per-track if a fetch fails.
+    # Playlist items don't carry their own cover art — fetch each track's real art concurrently,
+    # falling back to the playlist's own cover if a fetch fails.
     track_ids = [(item.get("uri") or "").rsplit(":", 1)[-1] for item in items]
     with ThreadPoolExecutor(max_workers=_THUMBNAIL_FETCH_WORKERS) as pool:
         thumbnails = list(pool.map(_track_thumbnail, track_ids))

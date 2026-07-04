@@ -1,19 +1,4 @@
-"""
-Spotify source. Spotify doesn't expose downloadable audio, so the actual
-audio always comes from a YouTube Music search match — but the TAGS (title,
-artist, album, cover art) come from Spotify's own public embed pages (see
-services/spotify_client.py), not from whatever (if anything) YouTube
-provides for the matched video.
-
-No developer account, no OAuth, no API calls at all — just an HTTP GET
-against open.spotify.com/embed/.... See spotify_client.py's module
-docstring for the important caveat: this depends on Spotify continuing to
-server-render that page the same way.
-
-Supports single tracks, full albums, and full playlists. Embed pages don't
-expose per-track genre, so unlike the previous token-API-based version,
-Spotify tracks are downloaded without a genre tag.
-"""
+"""Spotify source: tags/art come from Spotify's embed pages, audio comes from a matched YouTube Music track."""
 
 import re
 
@@ -25,9 +10,7 @@ from app.sources.youtube import download_with_overrides, youtube_music_search_ur
 
 _URL_RE = re.compile(r"open\.spotify\.com/(track|album|playlist)/([A-Za-z0-9]+)")
 
-# Populated by fetch_info, consumed by download_track — avoids re-fetching
-# the Spotify embed page per track at download time. Keyed by the Spotify
-# track URL (what TrackInfo.url carries for this source).
+# Populated by fetch_info, consumed by download_track — avoids re-fetching per track. Keyed by Spotify track URL.
 _track_metadata_cache: dict[str, dict] = {}
 
 
@@ -100,9 +83,7 @@ class SpotifySource(Source):
             source=self.name,
             album=track["album"],
         )
-        # Stash everything download_track needs, keyed by the same url the
-        # frontend will send back in DownloadRequest — avoids re-fetching the
-        # Spotify embed page per track at download time.
+        # Stash what download_track needs, keyed by the url DownloadRequest will send back.
         _track_metadata_cache[track_url] = {
             "artist": track["artist"],
             "album": track["album"],
@@ -120,26 +101,16 @@ class SpotifySource(Source):
     ) -> str | None:
         meta = _track_metadata_cache.get(url, {})
         artist = meta.get("artist", "")
-        # Use only the primary (first) artist for the search query — a full
-        # "Artist A, Artist B, Artist C" string dilutes the match quality on
-        # multi-artist collabs, even though the full string is still used
-        # for the artist tag itself (see overrides below).
+        # Primary artist only for the search query — a full "A, B, C" string dilutes match quality.
         primary_artist = artist.split(",")[0].strip()
         query = f"{primary_artist} {title}".strip() if primary_artist else title
 
         overrides = {
             "artist": artist,
             "album": meta.get("album", ""),
-            # Without album_artist, media libraries (iTunes/Music.app
-            # confirmed) group by (album, artist) instead of just album —
-            # so a "Graduation" track with a guest feature (artist="Kanye
-            # West, Chris Martin") splits into a separate album tile from
-            # one without a feature (artist="Kanye West"). album_artist
-            # fixes the grouping key regardless of per-track guest features.
+            # Without this, libraries group by (album, artist) — a featured guest would split the album tile.
             "album_artist": primary_artist,
-            # Spotify's embed pages don't expose genre, and letting it fall
-            # through to YouTube's generic categories=["Music"] tag is worse
-            # than no genre at all — explicitly clear it instead.
+            # No genre data from Spotify's embed pages — clear it rather than inherit YouTube's generic tag.
             "genre": None,
         }
 

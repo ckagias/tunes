@@ -1,26 +1,6 @@
-"""
-Download job orchestration: bridges FastAPI's async world with yt-dlp's
-blocking calls, and bridges the resulting progress events to an SSE stream.
-
-Approach (see README/plan for rationale): the actual download runs in a
-background thread (via run_in_executor), reporting progress into a plain
-queue.Queue. The SSE route reads that same queue. This mirrors the proven
-pattern from the original Flask app rather than fighting asyncio — yt-dlp's
-hooks are synchronous callbacks and a thread-safe queue is the simplest
-correct bridge.
-
-Event contract (unchanged from the original app, so the frontend can consume
-it identically): started, progress, converting, track_done, track_error,
-zipping, zip_ready, all_done.
-
-Tracks within a single job download concurrently (bounded worker pool, see
-MAX_CONCURRENT_DOWNLOADS) rather than one at a time — most per-track time is
-network I/O wait, not CPU, so this gives a roughly proportional speedup on
-large playlists. This is safe because: session.queue is a stdlib
-queue.Queue (thread-safe for concurrent put()); each worker writes a
-different session.files[url] key, never the same key concurrently; and each
-download_track() call constructs its own fresh yt-dlp instance, so there's
-no shared mutable state across workers.
+"""Download job orchestration: runs yt-dlp downloads on a background thread pool, streams
+progress into session.queue for the SSE route. Event contract: started, progress, converting,
+track_done, track_error, zipping, zip_ready, all_done.
 """
 
 import asyncio
@@ -67,8 +47,7 @@ def _make_hooks(q, url: str, title: str):
             )
 
     def pp_hook(d):
-        # Presence kept for parity with the source interface; the concrete
-        # source (e.g. YouTubeSource) wraps this to capture the final path.
+        # Kept for interface parity — sources wrap this to capture the final path.
         pass
 
     return progress_hook, pp_hook
@@ -126,11 +105,7 @@ def run_download_job(
     playlist_thumbnail: str,
     is_true_playlist: bool = False,
 ) -> None:
-    """
-    Synchronous job body — runs on a worker thread via run_in_executor.
-    Mirrors the original Flask app's do_download() closely, but downloads
-    tracks concurrently (bounded pool) instead of one at a time.
-    """
+    """Synchronous job body — runs on a worker thread via run_in_executor, downloads tracks concurrently."""
     q = session.queue
 
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DOWNLOADS) as pool:
@@ -150,10 +125,7 @@ def run_download_job(
 
         safe_name = os.path.basename(music_dir)
 
-        # Real playlists only (not albums, whose track order is already
-        # implied by their own metadata) — lets iTunes/Apple Music/VLC
-        # import the zip as a ready-made playlist instead of the user
-        # having to rebuild track order by hand.
+        # Real playlists only — an album's track order is already implied by its own metadata.
         if is_true_playlist:
             media.build_m3u8(session.files, urls, titles, music_dir, safe_name)
 

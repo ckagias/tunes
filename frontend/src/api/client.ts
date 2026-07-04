@@ -1,7 +1,6 @@
 import type { DownloadRequestPayload, DownloadResponse, InfoResponse } from "../types";
 
-// Base URL is relative so it works through the Vite dev proxy (see
-// vite.config.ts) in development, and same-origin in any future deploy.
+// Relative so it works through the Vite dev proxy and same-origin in production.
 const API_BASE = "/api";
 
 async function parseErrorMessage(response: Response): Promise<string> {
@@ -51,19 +50,7 @@ export function zipFileUrl(sessionId: string): string {
   return `${API_BASE}/serve-zip/${encodeURIComponent(sessionId)}`;
 }
 
-/**
- * Ends a session and frees its temp files server-side. The backend no
- * longer deletes a playlist zip after a single serve (so re-clicking Save
- * works), so the frontend is responsible for cleaning up once the user is
- * actually done — see callers in App.tsx (Start over, starting a new
- * lookup) and the beforeunload handler (page close/navigate away).
- *
- * Uses sendBeacon when available since it's the only reliable way to fire
- * a request during beforeunload — a normal fetch can be cancelled by the
- * browser before it completes. sendBeacon can't set a DELETE method or
- * custom headers, so the backend route accepts this as a no-body POST-like
- * beacon too (see routes/serve.py).
- */
+// Ends a session and frees its temp files. sendBeacon survives page unload; fetch is the fallback.
 export function endSession(sessionId: string): void {
   const url = `${API_BASE}/session/${encodeURIComponent(sessionId)}`;
   if (navigator.sendBeacon) {
@@ -71,7 +58,6 @@ export function endSession(sessionId: string): void {
     return;
   }
   fetch(url, { method: "DELETE", keepalive: true }).catch(() => {
-    // Best-effort cleanup — nothing the user can do if this fails, and the
-    // session will still be reachable/retryable until the process restarts.
+    // Best-effort cleanup — nothing to do client-side if this fails.
   });
 }

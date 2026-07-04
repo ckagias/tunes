@@ -1,13 +1,4 @@
-"""
-Resolves a URL to the Source that should handle it. Routes call this and
-never import a concrete source directly — this is the extension seam that
-lets platforms be added without touching route code.
-
-Spotify resolves to a matching YouTube video/track (see its fetch_info())
-and then delegates download_track() straight to YouTubeSource — so it
-doesn't need any ordering precedence relative to YouTube itself; its URL
-domain is disjoint from youtube.com/youtu.be.
-"""
+"""Resolves a URL to the Source that should handle it. Routes never import a concrete source directly."""
 
 from app.sources.base import Source
 from app.sources.spotify import SpotifySource

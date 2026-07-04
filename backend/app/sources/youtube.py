@@ -1,15 +1,5 @@
-"""
-YouTube source. Ports the /api/info and download logic from the original
-Flask app (app.py) with no behavior changes: same yt-dlp options, same
-single-vs-playlist branching, same tagging postprocessor chain.
-
-SpotifySource builds its own InfoResponse/TrackInfo from Spotify's real
-metadata (see sources/spotify.py), but delegates download_track() straight
-to download_with_overrides() below — so a Spotify link is really just
-"find the equivalent YouTube Music track, then act exactly like that
-YouTube URL was pasted directly, with Spotify's real tags/art embedded
-instead of YouTube's own."
-"""
+"""YouTube source: /api/info and download logic. SpotifySource also delegates
+download_track() here, resolving a matched YouTube Music track instead."""
 
 import os
 import re
@@ -33,50 +23,26 @@ from app.sources.base import Source
 MIN_AUDIO_QUALITY = 64
 MAX_AUDIO_QUALITY = 320
 
-# Bounded pool for resolving each playlist/album entry's real uploader (see
-# _resolve_uploader) — mirrors the download job's worker pool
-# (services/jobs.py MAX_CONCURRENT_DOWNLOADS) and spotify_client's thumbnail
-# pool: this is network I/O wait, not CPU, so a bounded pool gives a
-# proportional speedup without hammering YouTube with dozens of simultaneous
-# requests.
+# Bounded worker pool for per-entry uploader resolution — I/O bound, mirrors jobs.MAX_CONCURRENT_DOWNLOADS.
 _UPLOADER_FETCH_WORKERS = 8
 
 
 def info_response_from_ytdlp(info: dict, url: str, source_name: str) -> InfoResponse:
-    """
-    Build an InfoResponse/TrackInfo tree from a yt-dlp info dict for a
-    direct YouTube URL. `source_name` is stamped onto each TrackInfo so the
-    frontend can tell which link type the user actually pasted.
-    """
+    """Build an InfoResponse/TrackInfo tree from a yt-dlp info dict."""
     if "entries" in info:
         return _playlist_info(info, url, source_name)
     return _single_info(info, url, source_name)
 
 
 def _is_youtube_music_album(url: str) -> bool:
-    """
-    True for a YouTube Music "album" playlist link. YT Music auto-generates
-    one playlist per album, always with a `list=OLAK5uy_...` id — distinct
-    from a real user-created playlist (`list=PL...`) or a "mix"/radio
-    (`list=RD...`). This is a stable, widely-relied-on id convention (not
-    exposed anywhere in yt-dlp's flat-extraction info dict itself), used to
-    decide whether the download zip should get an .m3u8 (real playlists
-    only — an album's track order is already implied by its own metadata).
-    """
+    """YT Music album playlists always use a list=OLAK5uy_... id, unlike real playlists (PL...) or mixes (RD...)."""
     query = urllib.parse.urlparse(url).query
     list_id = urllib.parse.parse_qs(query).get("list", [""])[0]
     return list_id.startswith("OLAK5uy_")
 
 
 def _entry_thumbnail(entry: dict) -> str:
-    """
-    Best thumbnail URL for a flat-playlist entry. info_ydl_opts() uses
-    extract_flat="in_playlist", under which yt-dlp never populates the plain
-    `thumbnail` field on playlist/album entries (confirmed empirically: it's
-    always None) — only the `thumbnails` list (sized variants, no field
-    guaranteed pre-sorted) is populated. Falls back to `thumbnail` anyway in
-    case a future yt-dlp version (or a non-flat entry) does set it directly.
-    """
+    """Best thumbnail for a flat-playlist entry — extract_flat entries never set `thumbnail`, only `thumbnails`."""
     if entry.get("thumbnail"):
         return entry["thumbnail"]
     thumbs = entry.get("thumbnails") or []
@@ -87,7 +53,7 @@ def _entry_thumbnail(entry: dict) -> str:
 
 
 def _resolve_uploader(vid_url: str) -> str:
-    """Best-effort fetch of a single video's real uploader/channel name. Returns "" on any failure."""
+    """Best-effort fetch of a single video's real uploader/channel name."""
     try:
         with yt_dlp.YoutubeDL({**base_ydl_opts(), "extract_flat": False, "skip_download": True}) as ydl:
             full = ydl.extract_info(vid_url, download=False)
@@ -99,16 +65,11 @@ def _resolve_uploader(vid_url: str) -> str:
 
 
 def _playlist_info(info: dict, url: str, source_name: str) -> InfoResponse:
-    playlist_thumbnail = info.get("thumbnail") or ""
-    first_entry_thumb = ""
     entries = info.get("entries") or []
-    for entry in entries:
-        if entry and _entry_thumbnail(entry):
-            first_entry_thumb = _entry_thumbnail(entry)
-            break
 
     valid_entries = []
     vid_urls: list[str] = []
+    thumbnails: list[str] = []
     for entry in entries:
         if not entry:
             continue
@@ -120,13 +81,9 @@ def _playlist_info(info: dict, url: str, source_name: str) -> InfoResponse:
             continue
         valid_entries.append((entry, vid_id, vid_url))
         vid_urls.append(vid_url)
+        thumbnails.append(_entry_thumbnail(entry))
 
-    # info_ydl_opts()'s extract_flat="in_playlist" mode never populates
-    # uploader/channel on playlist/album entries (confirmed empirically:
-    # every uploader-ish field is absent, not just empty) — unlike
-    # thumbnails, there's no fallback field to read instead. The only way to
-    # get the real artist/uploader is a full per-video resolve, done
-    # concurrently (bounded pool) since this is pure network I/O wait.
+    # extract_flat never populates uploader/channel, so each entry needs a full resolve.
     with ThreadPoolExecutor(max_workers=_UPLOADER_FETCH_WORKERS) as pool:
         uploaders = list(pool.map(_resolve_uploader, vid_urls))
 
@@ -136,18 +93,20 @@ def _playlist_info(info: dict, url: str, source_name: str) -> InfoResponse:
             title=entry.get("title") or vid_id,
             url=vid_url,
             duration=fmt_duration(entry.get("duration")),
-            thumbnail=_entry_thumbnail(entry),
+            thumbnail=thumbnails[i],
             uploader=uploaders[i],
             source=source_name,
         )
         for i, (entry, vid_id, vid_url) in enumerate(valid_entries)
     ]
 
+    playlist_thumbnail = info.get("thumbnail") or next((t for t in thumbnails if t), "")
+
     return InfoResponse(
         type="playlist",
         title=info.get("title", "Playlist"),
         uploader=info.get("uploader") or info.get("channel") or "",
-        thumbnail=playlist_thumbnail or first_entry_thumb,
+        thumbnail=playlist_thumbnail,
         count=len(tracks),
         tracks=tracks,
         is_true_playlist=not _is_youtube_music_album(url),
@@ -174,24 +133,12 @@ def _single_info(info: dict, url: str, source_name: str) -> InfoResponse:
     )
 
 
-# How many flat search results to consider before giving up on a track.
-# 5 missed real matches in practice — e.g. "On Sight" only appeared at
-# position 6-7 behind several same-artist decoys (Lift Yourself, Black
-# Skinhead, ...) that the title filter correctly rejected, leaving no valid
-# candidate. 10 costs a bit more (each rejected/failing candidate is a
-# wasted flat-list entry, but only candidates that pass the title filter
-# get a full probe) in exchange for meaningfully fewer false "no match"
-# outcomes.
+# Flat search results to consider before giving up on a track match.
 SEARCH_CANDIDATES = 10
 
 
 def youtube_music_search_url(query: str) -> str:
-    """
-    Build a music.youtube.com/search URL for `query`. yt-dlp's older
-    `ytmsearch:` prefix no longer resolves in current versions — the
-    YouTube Music search extractor now only matches this URL form
-    (`youtube:music:search_url`, no _SEARCH_KEY).
-    """
+    """Build a music.youtube.com/search URL — yt-dlp's ytmsearch: prefix no longer resolves."""
     return f"https://music.youtube.com/search?q={urllib.parse.quote(query)}"
 
 
@@ -202,13 +149,7 @@ _FEATURE_CREDIT_RE = re.compile(
 
 
 def _normalize_title(title: str) -> str:
-    """
-    Strip feature-credit annotations (parenthetical or trailing "feat./ft."
-    text — these vary in wording between Spotify and YouTube titles for the
-    literal same song, e.g. "(ft. Snoop Doggy Dogg)" vs "(feat. Snoop
-    Dogg)"), then lowercase and strip remaining punctuation/whitespace for
-    loose comparison.
-    """
+    """Strip feature-credit annotations, lowercase, and drop punctuation for loose comparison."""
     base = _FEATURE_CREDIT_RE.sub("", title)
     return "".join(ch for ch in base.lower() if ch.isalnum())
 
@@ -220,42 +161,18 @@ _UNDESIRABLE_VARIANT_RE = re.compile(
 
 
 def _is_undesirable_variant(candidate_title: str) -> bool:
-    """
-    Reject titles that pass the plain title-match check (the extra word is
-    often just appended, e.g. "On Sight (Instrumental)" still contains "On
-    Sight") but are clearly not the actual song a listener wants. Seen in
-    practice: YouTube Music search ranking an instrumental-only upload above
-    the real vocal track for some queries, non-deterministically between
-    calls — the album-tag preference alone doesn't protect against this
-    since these variant uploads sometimes carry real album metadata too.
-    """
+    """True for instrumental/karaoke/etc. uploads that pass the title check but aren't the real track."""
     return bool(_UNDESIRABLE_VARIANT_RE.search(candidate_title))
 
 
-# Words that mark a title as a distinct, differently-timed version of a
-# song rather than decoration — unlike "(Official Video)" or a feat. credit,
-# these can't be dropped by the substring check below without risking a
-# false match against the plain base song. Seen in practice: Spotify's "All
-# Of The Lights (Interlude)" (62s) substring-matched YouTube's "All Of The
-# Lights" (the real 300s single) because "all of the lights" is a substring
-# of "all of the lights interlude" — the two are entirely different tracks.
+# Marks a title as a distinct, differently-timed version (e.g. "Song (Interlude)" vs "Song") rather than decoration.
 _VARIANT_MARKER_RE = re.compile(
     r"\b(interlude|intro|outro|skit|reprise|prelude)\b", re.IGNORECASE
 )
 
 
 def _title_plausibly_matches(candidate_title: str, expected_title: str) -> bool:
-    """
-    Reject candidates whose title has nothing to do with what we searched
-    for. This is deliberately loose (substring match after stripping
-    feature credits, punctuation, and case) since YouTube titles commonly
-    add "(Official Video)", differently-worded feat. credits, remix tags,
-    etc. — but it catches the real failure mode seen in practice: YouTube
-    Music's search returning a totally different song by the same artist as
-    the top (or a later) "result", which a metadata-only check (e.g. "does
-    it have an album tag") would happily accept since the wrong song can
-    have perfectly real album metadata too.
-    """
+    """Loose substring match after normalization, but require matching variant markers (interlude/intro/etc.)."""
     if not expected_title:
         return True
     norm_candidate = _normalize_title(candidate_title)
@@ -273,19 +190,7 @@ def _title_plausibly_matches(candidate_title: str, expected_title: str) -> bool:
 
 
 def resolve_best_search_result(search_url: str, expected_title: str = "") -> dict | None:
-    """
-    The plain top-1 search result is sometimes a bad match: an
-    age/region-restricted upload that fails outright, a fan upload with no
-    Content-ID album tag when an official one exists further down the
-    results, or — seen in practice — an entirely different song by the same
-    artist that YouTube Music's search ranked first. Pull the top few flat
-    results, drop any whose title doesn't plausibly match `expected_title`
-    (the track title actually being searched for), fully probe the rest in
-    order, and return the first one that both resolves successfully AND has
-    an album tag — falling back to the first one that merely resolves if
-    none do. Returns None if every candidate fails or none has a plausible
-    title match.
-    """
+    """Probe the top search candidates in order, preferring one with a plausible title match and an album tag."""
     flat_opts = {**base_ydl_opts(), "extract_flat": True, "playlist_items": f"1-{SEARCH_CANDIDATES}"}
     try:
         with yt_dlp.YoutubeDL(flat_opts) as ydl:
@@ -299,23 +204,14 @@ def resolve_best_search_result(search_url: str, expected_title: str = "") -> dic
         e for e in (flat.get("entries") or [])
         if e
         and e.get("id")
-        # YouTube Music search results sometimes include an album/artist
-        # "browse" page (ie_key "YoutubeTab", id prefixed "MPREb_...") mixed
-        # in with actual song results. It isn't a video at all, so probing
-        # it as https://www.youtube.com/watch?v=MPREb_... always fails with
-        # "Video unavailable" — filter it out here instead of wasting a
-        # probe (and a misleading error) on something that was never a song.
+        # Skip album/artist browse pages (ie_key "YoutubeTab") mixed into search results — not real videos.
         and e.get("ie_key") != "YoutubeTab"
         and _title_plausibly_matches(e.get("title") or "", expected_title)
     ]
     if not candidates:
         return None
 
-    # Push instrumental/karaoke/lyrics-video/etc. variants to the back
-    # (stable sort keeps each group's original relative order) rather than
-    # dropping them outright — YouTube Music's ranking is non-deterministic
-    # enough that one of these can otherwise outrank the real vocal track,
-    # and an undesirable variant still beats no match at all.
+    # Deprioritize (not drop) instrumental/karaoke/etc. variants — still better than no match.
     candidates.sort(key=lambda e: _is_undesirable_variant(e.get("title") or ""))
 
     first_playable: dict | None = None
@@ -338,18 +234,7 @@ def resolve_best_search_result(search_url: str, expected_title: str = "") -> dic
 
 
 def resolve_download_target(url_or_search: str, expected_title: str = "") -> dict | None:
-    """
-    Resolve `url_or_search` to a single concrete video info dict — the one
-    piece of resolution logic shared by both quality-probing and the actual
-    download, so they never disagree about which video was picked.
-
-    For a music.youtube.com/search URL, delegates to
-    resolve_best_search_result() (skips age-restricted/unplayable results,
-    rejects candidates that don't plausibly match `expected_title`, prefers
-    one with a real album tag). For a direct URL or a ytsearch1: string,
-    just extracts it directly (single result, no candidates to pick
-    between).
-    """
+    """Resolve to a single concrete video info dict, shared by quality-probing and the actual download."""
     if "music.youtube.com/search" in url_or_search:
         return resolve_best_search_result(url_or_search, expected_title)
 
@@ -368,13 +253,7 @@ def resolve_download_target(url_or_search: str, expected_title: str = "") -> dic
 
 
 def resolve_target_quality(info: dict) -> int:
-    """
-    Pick the ffmpeg re-encode target from the resolved video's actual
-    bitrate, so it matches the source instead of a fixed high value.
-    Re-encoding above the source's real bitrate doesn't recover any detail —
-    it just produces a larger file for no gain. Falls back to
-    DEFAULT_AUDIO_QUALITY if the bitrate isn't present on `info`.
-    """
+    """Pick the ffmpeg re-encode target from the source's actual bitrate instead of a fixed value."""
     abr = info.get("abr") if info else None
     if abr:
         return max(MIN_AUDIO_QUALITY, min(round(abr), MAX_AUDIO_QUALITY))
@@ -391,32 +270,11 @@ def download_with_overrides(
     expected_title: str = "",
 ) -> str | None:
     """
-    Download+tag a track, optionally overriding tag fields (album, genre,
-    artist, ...) and/or the cover art before the tagging postprocessors run —
-    used by SpotifySource to inject its real metadata instead of whatever
-    (if anything) YouTube itself provides for that field.
-
-    Mechanism (verified): FFmpegMetadata reads tag values straight out of
-    yt-dlp's info dict at postprocessing time, so extracting the info dict
-    ourselves, mutating it, then handing it to process_ie_result(download=True)
-    (instead of the simpler ydl.download([url])) makes the postprocessor
-    chain embed our overridden values. With overrides=None/{} and
-    thumbnail_url=None this is byte-for-byte the same download path as
-    before — only keys actually present in `overrides` are changed, and the
-    thumbnail is only swapped if thumbnail_url is given (verified: replacing
-    info['thumbnails']/info['thumbnail'] with a real https URL lets yt-dlp's
-    own writethumbnail/EmbedThumbnail machinery fetch and embed it normally —
-    confirmed byte-identical to the source image via md5sum).
-
-    `url_or_search` can be a direct URL, a ytsearch1: search string, or a
-    music.youtube.com/search?q=... URL. For the last case, the naive top
-    search result is sometimes a bad match (age-restricted, missing album
-    tags an official upload further down has, or — seen in practice — a
-    totally different song by the same artist) — see
-    resolve_best_search_result(), which is used here instead of blindly
-    taking result #1. `expected_title` (the real track title being searched
-    for) lets it reject wrong-song candidates; pass it whenever
-    `url_or_search` is a search URL.
+    Download+tag a track, optionally overriding tag fields and/or cover art
+    before the postprocessors run (used by SpotifySource for real metadata).
+    Mutates the resolved info dict and feeds it through process_ie_result()
+    so FFmpegMetadata picks up the overrides. `url_or_search` can be a
+    direct URL, a ytsearch1: string, or a music.youtube.com/search URL.
     """
     overrides = overrides or {}
     captured_path: list[str] = []
@@ -441,12 +299,7 @@ def download_with_overrides(
             if value:
                 info[key] = value
             elif value is None and key == "genre":
-                # FFmpegMetadata falls back through genre -> genres ->
-                # categories -> tags (see its `add('genre', (...))` call),
-                # so YouTube's generic categories=['Music'] silently becomes
-                # the genre tag unless all of these are cleared too. Used
-                # when a source knows it has no real genre and that generic
-                # fallback would be worse than no tag at all.
+                # Clear genre's fallback chain too, or YouTube's generic categories=['Music'] leaks through.
                 for k in ("genre", "genres", "categories", "tags"):
                     info.pop(k, None)
         if thumbnail_url:
@@ -457,7 +310,7 @@ def download_with_overrides(
     if captured_path:
         return _strip_id_suffix(captured_path[0])
 
-    # Fall back to scanning music_dir for a new .mp3 (mirrors original app.py behavior).
+    # Fall back to scanning music_dir for a new .mp3.
     for fname in os.listdir(music_dir):
         if fname.endswith(".mp3"):
             candidate = os.path.join(music_dir, fname)
@@ -468,23 +321,12 @@ def download_with_overrides(
 
 _ID_SUFFIX_RE = re.compile(r" \[[^\[\]]+\](\.\w+)$")
 
-# Guards the exists-check + rename below so two concurrent workers (see
-# jobs.MAX_CONCURRENT_DOWNLOADS) finishing same-titled tracks at the same
-# instant can't both pass the "clean name free" check before either renames
-# — that race would let one silently clobber the other, exactly the bug
-# this whole [video_id] scheme exists to avoid.
+# Guards the rename below against two concurrent same-titled downloads racing on the same clean filename.
 _rename_lock = threading.Lock()
 
 
 def _strip_id_suffix(path: str) -> str:
-    """
-    Rename "Title [video_id].mp3" (see download_ydl_opts' outtmpl) down to
-    "Title.mp3" now that the download is finished and the id has done its
-    job of keeping concurrent same-titled downloads from colliding on disk.
-    If the clean name is already taken (a genuine duplicate title within the
-    same playlist), falls back to a numeric suffix rather than overwriting
-    another finished track.
-    """
+    """Rename "Title [video_id].mp3" back to "Title.mp3", falling back to a numeric suffix on collision."""
     match = _ID_SUFFIX_RE.search(path)
     if not match:
         return path
