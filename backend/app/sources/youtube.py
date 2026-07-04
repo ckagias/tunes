@@ -49,8 +49,23 @@ def info_response_from_ytdlp(info: dict, url: str, source_name: str) -> InfoResp
     frontend can tell which link type the user actually pasted.
     """
     if "entries" in info:
-        return _playlist_info(info, source_name)
+        return _playlist_info(info, url, source_name)
     return _single_info(info, url, source_name)
+
+
+def _is_youtube_music_album(url: str) -> bool:
+    """
+    True for a YouTube Music "album" playlist link. YT Music auto-generates
+    one playlist per album, always with a `list=OLAK5uy_...` id — distinct
+    from a real user-created playlist (`list=PL...`) or a "mix"/radio
+    (`list=RD...`). This is a stable, widely-relied-on id convention (not
+    exposed anywhere in yt-dlp's flat-extraction info dict itself), used to
+    decide whether the download zip should get an .m3u8 (real playlists
+    only — an album's track order is already implied by its own metadata).
+    """
+    query = urllib.parse.urlparse(url).query
+    list_id = urllib.parse.parse_qs(query).get("list", [""])[0]
+    return list_id.startswith("OLAK5uy_")
 
 
 def _entry_thumbnail(entry: dict) -> str:
@@ -83,7 +98,7 @@ def _resolve_uploader(vid_url: str) -> str:
         return ""
 
 
-def _playlist_info(info: dict, source_name: str) -> InfoResponse:
+def _playlist_info(info: dict, url: str, source_name: str) -> InfoResponse:
     playlist_thumbnail = info.get("thumbnail") or ""
     first_entry_thumb = ""
     entries = info.get("entries") or []
@@ -135,6 +150,7 @@ def _playlist_info(info: dict, source_name: str) -> InfoResponse:
         thumbnail=playlist_thumbnail or first_entry_thumb,
         count=len(tracks),
         tracks=tracks,
+        is_true_playlist=not _is_youtube_music_album(url),
     )
 
 

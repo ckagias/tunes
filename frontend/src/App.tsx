@@ -87,6 +87,7 @@ export default function App() {
         titles,
         playlist_title: isPlaylist ? info.title : "",
         playlist_thumbnail: isPlaylist ? info.thumbnail : "",
+        is_true_playlist: info.is_true_playlist,
       });
 
       setSessionId(response.session_id);

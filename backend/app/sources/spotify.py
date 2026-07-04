@@ -85,6 +85,7 @@ class SpotifySource(Source):
             thumbnail=thumbnail,
             count=len(track_infos),
             tracks=track_infos,
+            is_true_playlist=kind == "playlist",
         )
 
     def _track_to_info(self, track: dict) -> TrackInfo:

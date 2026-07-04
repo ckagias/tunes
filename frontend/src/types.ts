@@ -18,6 +18,10 @@ export interface InfoResponse {
   thumbnail: string;
   count: number;
   tracks: TrackInfo[];
+  // True only for a real playlist link, not an album (type is "playlist"
+  // for both) — see backend/app/models.py for why this is a separate field
+  // from DownloadResponse.is_playlist.
+  is_true_playlist: boolean;
 }
 
 export interface DownloadRequestPayload {
@@ -25,6 +29,7 @@ export interface DownloadRequestPayload {
   titles: Record<string, string>;
   playlist_title: string;
   playlist_thumbnail: string;
+  is_true_playlist?: boolean;
   session_id?: string;
 }
 

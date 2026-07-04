@@ -57,3 +57,39 @@ def build_zip(music_dir: str, session_dir: str, zip_path: str) -> None:
                 abs_path = os.path.join(root, fname)
                 arc_name = os.path.relpath(abs_path, session_dir)
                 zf.write(abs_path, arc_name)
+
+
+def build_m3u8(
+    files: dict[str, str], urls: list[str], titles: dict[str, str], music_dir: str, playlist_name: str
+) -> None:
+    """
+    Write an extended-M3U playlist named after the playlist itself (e.g.
+    "Cali Car Drive.m3u8", matching the sanitized folder/zip name already
+    used for this download) into music_dir, listing successfully downloaded
+    tracks in the original playlist's order. Filenames are relative to the
+    playlist file itself (same directory in the zip), matching what iTunes/
+    Apple Music, VLC, and most other players expect for a "drop this folder
+    in" playlist import — no absolute paths, so it still resolves correctly
+    wherever the user unzips it.
+
+    Duration is intentionally omitted (#EXTINF:-1,Title): the real duration
+    lives in the tags of the file yt-dlp/ffmpeg already produced, and no
+    duration value is threaded through this far into the job — -1 just
+    tells the player "look it up yourself", which every player above does
+    without complaint.
+    """
+    lines = ["#EXTM3U"]
+    for url in urls:
+        path = files.get(url)
+        if not path or not os.path.isfile(path):
+            continue  # skip tracks that errored out — nothing to reference
+        title = titles.get(url, os.path.splitext(os.path.basename(path))[0])
+        lines.append(f"#EXTINF:-1,{title}")
+        lines.append(os.path.basename(path))
+
+    if len(lines) == 1:
+        return  # nothing downloaded successfully — no point writing an empty playlist
+
+    m3u8_path = os.path.join(music_dir, f"{playlist_name}.m3u8")
+    with open(m3u8_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")

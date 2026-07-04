@@ -124,6 +124,7 @@ def run_download_job(
     music_dir: str,
     is_playlist: bool,
     playlist_thumbnail: str,
+    is_true_playlist: bool = False,
 ) -> None:
     """
     Synchronous job body — runs on a worker thread via run_in_executor.
@@ -148,6 +149,14 @@ def run_download_job(
             media.fetch_cover(playlist_thumbnail, os.path.join(music_dir, f"cover.{ext}"))
 
         safe_name = os.path.basename(music_dir)
+
+        # Real playlists only (not albums, whose track order is already
+        # implied by their own metadata) — lets iTunes/Apple Music/VLC
+        # import the zip as a ready-made playlist instead of the user
+        # having to rebuild track order by hand.
+        if is_true_playlist:
+            media.build_m3u8(session.files, urls, titles, music_dir, safe_name)
+
         zip_path = os.path.join(session.session_dir, f"{safe_name}.zip")
         media.build_zip(music_dir, session.session_dir, zip_path)
 
@@ -171,6 +180,7 @@ async def start_download(
     titles: dict[str, str],
     playlist_title: str,
     playlist_thumbnail: str,
+    is_true_playlist: bool = False,
 ) -> tuple[Session, bool]:
     """Create a session and fire off the download job without awaiting it."""
     is_playlist = bool(playlist_title.strip())
@@ -196,6 +206,7 @@ async def start_download(
         music_dir,
         is_playlist,
         playlist_thumbnail,
+        is_true_playlist,
     )
 
     return session, is_playlist
