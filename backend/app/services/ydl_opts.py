@@ -37,9 +37,6 @@ def base_ydl_opts() -> dict:
         "quiet": True,
         "no_warnings": True,
         "ignoreerrors": True,
-        # Caps any search-style URL (ytsearch:, music.youtube.com/search) to
-        # its top result — irrelevant for direct video/track URLs.
-        "playlist_items": "1",
         "extractor_args": {
             "youtube": {
                 "player_client": ["android", "web", "ios"],
