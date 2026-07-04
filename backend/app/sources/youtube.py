@@ -216,6 +216,18 @@ def _is_undesirable_variant(candidate_title: str) -> bool:
     return bool(_UNDESIRABLE_VARIANT_RE.search(candidate_title))
 
 
+# Words that mark a title as a distinct, differently-timed version of a
+# song rather than decoration — unlike "(Official Video)" or a feat. credit,
+# these can't be dropped by the substring check below without risking a
+# false match against the plain base song. Seen in practice: Spotify's "All
+# Of The Lights (Interlude)" (62s) substring-matched YouTube's "All Of The
+# Lights" (the real 300s single) because "all of the lights" is a substring
+# of "all of the lights interlude" — the two are entirely different tracks.
+_VARIANT_MARKER_RE = re.compile(
+    r"\b(interlude|intro|outro|skit|reprise|prelude)\b", re.IGNORECASE
+)
+
+
 def _title_plausibly_matches(candidate_title: str, expected_title: str) -> bool:
     """
     Reject candidates whose title has nothing to do with what we searched
@@ -234,6 +246,13 @@ def _title_plausibly_matches(candidate_title: str, expected_title: str) -> bool:
     norm_expected = _normalize_title(expected_title)
     if not norm_expected:
         return True
+
+    expected_markers = set(m.lower() for m in _VARIANT_MARKER_RE.findall(expected_title))
+    if expected_markers:
+        candidate_markers = set(m.lower() for m in _VARIANT_MARKER_RE.findall(candidate_title))
+        if not expected_markers & candidate_markers:
+            return False
+
     return norm_expected in norm_candidate or norm_candidate in norm_expected
 
 
