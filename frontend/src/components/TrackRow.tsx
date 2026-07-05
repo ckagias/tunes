@@ -3,7 +3,7 @@ import { StatusBadge } from "./StatusBadge";
 
 const STYLES = {
   row: "flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0",
-  checkbox: "accent-accent",
+  checkbox: "accent-accent w-4 h-4 cursor-pointer",
   thumb: "w-12 h-12 object-cover rounded-md flex-shrink-0",
   meta: "flex-1 min-w-0",
   title: "text-sm overflow-hidden text-ellipsis whitespace-nowrap",

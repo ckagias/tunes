@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { endSession, getInfo, startDownload } from "./api/client";
-import { DownloadPanel } from "./components/DownloadPanel";
+import { PlaylistSummary } from "./components/PlaylistSummary";
 import { TrackList } from "./components/TrackList";
 import { UrlInput } from "./components/UrlInput";
 import { useDownloadProgress } from "./hooks/useDownloadProgress";
@@ -9,11 +9,13 @@ import type { InfoResponse } from "./types";
 const STYLES = {
   page: "min-h-screen flex justify-center",
   app: "w-full max-w-2xl px-6 pt-10 pb-16",
-  header: "mb-6",
+  header: "mb-6 text-center",
   title: "text-2xl font-semibold tracking-tight",
+  subtitle: "text-sm text-text-muted mt-1",
   errorBanner: "bg-danger/10 text-danger text-sm rounded-lg px-4 py-3 mb-4",
-  autoImportRow: "flex items-center gap-2 mb-4",
-  autoImportLabel: "text-sm text-text-muted select-none",
+  loadingCard: "mb-6 px-4 py-10 flex flex-col items-center justify-center gap-3",
+  spinner: "h-6 w-6 rounded-full border-2 border-border border-t-accent animate-spin",
+  loadingText: "text-sm text-text-muted",
 };
 
 type Phase = "idle" | "fetching-info" | "info-ready" | "downloading";
@@ -117,14 +119,32 @@ export default function App() {
       <main className={STYLES.app}>
         <header className={STYLES.header}>
           <h1 className={STYLES.title}>Tunes</h1>
+          <p className={STYLES.subtitle}>Download songs & playlists from Spotify or YouTube</p>
         </header>
 
         <UrlInput onSubmit={handleFetchInfo} disabled={phase === "fetching-info"} />
 
         {error && <p className={STYLES.errorBanner}>{error}</p>}
 
+        {phase === "fetching-info" && (
+          <div className={STYLES.loadingCard}>
+            <div className={STYLES.spinner} />
+            <p className={STYLES.loadingText}>Loading track info…</p>
+          </div>
+        )}
+
         {info && (
           <>
+            <PlaylistSummary
+              info={info}
+              selectedCount={selected.size}
+              starting={starting}
+              sessionId={sessionId}
+              isComplete={progressState.isComplete}
+              zipFilename={progressState.zipFilename}
+              tracks={progressState.tracks}
+              onStartDownload={handleStartDownload}
+            />
             <TrackList
               info={info}
               selected={selected}
@@ -132,28 +152,10 @@ export default function App() {
               onToggleAll={handleToggleAll}
               progress={progressState.tracks}
               selectable={selectable}
-            />
-            {!sessionId && (
-              <label className={STYLES.autoImportRow}>
-                <input
-                  type="checkbox"
-                  checked={autoImport}
-                  onChange={(e) => setAutoImport(e.target.checked)}
-                />
-                <span className={STYLES.autoImportLabel}>
-                  Add to iTunes automatically (Windows only)
-                </span>
-              </label>
-            )}
-            <DownloadPanel
-              onStart={handleStartDownload}
-              starting={starting}
-              selectedCount={selected.size}
+              autoImport={autoImport}
+              onAutoImportChange={setAutoImport}
               sessionId={sessionId}
-              isPlaylist={info.type === "playlist"}
-              zipFilename={progressState.zipFilename}
               isComplete={progressState.isComplete}
-              tracks={progressState.tracks}
               importStatus={progressState.importStatus}
               onReset={handleReset}
             />
