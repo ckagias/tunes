@@ -6,8 +6,10 @@ track_done, track_error, zipping, zip_ready, all_done.
 import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
-from app.services import media
+from app.config import settings
+from app.services import library, media
 from app.services.sessions import Session, store
 from app.sources import registry
 from app.sources.youtube import sanitize_filename
@@ -104,6 +106,7 @@ def run_download_job(
     is_playlist: bool,
     playlist_thumbnail: str,
     is_true_playlist: bool = False,
+    auto_import: bool = False,
 ) -> None:
     """Synchronous job body — runs on a worker thread via run_in_executor, downloads tracks concurrently."""
     q = session.queue
@@ -143,16 +146,43 @@ def run_download_job(
             }
         )
 
+    if auto_import:
+        q.put({"type": "importing", "message": "Adding to iTunes…"})
+        try:
+            dest = library.copy_session_to_library(music_dir, is_playlist)
+            if dest is None:
+                q.put(
+                    {
+                        "type": "import_error",
+                        "message": "LIBRARY_DIR isn't configured on the server.",
+                    }
+                )
+            elif library.is_import_supported():
+                added, total = library.import_to_itunes(dest)
+                q.put({"type": "imported", "added": added, "total": total})
+            else:
+                q.put(
+                    {
+                        "type": "imported",
+                        "added": 0,
+                        "total": 0,
+                        "message": "Copied to the library folder; iTunes import is Windows-only.",
+                    }
+                )
+        except Exception as e:
+            q.put({"type": "import_error", "message": str(e)})
+
     q.put({"type": "all_done", "session_id": session.session_id})
 
 
 async def start_download(
-    session_id: str | None,
+    session_id: Optional[str],
     urls: list[str],
     titles: dict[str, str],
     playlist_title: str,
     playlist_thumbnail: str,
     is_true_playlist: bool = False,
+    auto_import: Optional[bool] = None,
 ) -> tuple[Session, bool]:
     """Create a session and fire off the download job without awaiting it."""
     is_playlist = bool(playlist_title.strip())
@@ -168,6 +198,11 @@ async def start_download(
         music_dir = session.session_dir
     os.makedirs(music_dir, exist_ok=True)
 
+    # Per-request toggle overrides the server default when the client sends one explicitly.
+    resolved_auto_import = (
+        auto_import if auto_import is not None else settings.auto_import_itunes
+    )
+
     loop = asyncio.get_running_loop()
     loop.run_in_executor(
         None,
@@ -179,6 +214,7 @@ async def start_download(
         is_playlist,
         playlist_thumbnail,
         is_true_playlist,
+        resolved_auto_import,
     )
 
     return session, is_playlist

@@ -4,6 +4,12 @@ yt-dlp>=2024.12.0
 sse-starlette>=2.1
 pydantic-settings>=2.6
 
+# Only needed for the "add to iTunes automatically" feature (LIBRARY_DIR /
+# AUTO_IMPORT_ITUNES, see README), and only does anything on native Windows
+# Python. The marker means pip skips it entirely on macOS/Linux/WSL, where
+# it wouldn't install anyway.
+pywin32>=306; sys_platform == "win32"
+
 # Optional: improves resilience against YouTube bot-detection.
 # Requires a running bgutil-ytdlp-pot-provider server (see README "Advanced setup").
 # bgutil-ytdlp-pot-provider>=0.8.0

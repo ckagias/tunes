@@ -29,6 +29,8 @@ export interface DownloadRequestPayload {
   playlist_thumbnail: string;
   is_true_playlist?: boolean;
   session_id?: string;
+  // Omit to defer to the server's AUTO_IMPORT_ITUNES default; true/false overrides it.
+  auto_import?: boolean;
 }
 
 export interface DownloadResponse {
@@ -59,6 +61,9 @@ export type ProgressEvent =
   | { type: "track_error"; url: string; title: string; message: string }
   | { type: "zipping"; message: string }
   | { type: "zip_ready"; session_id: string; filename: string }
+  | { type: "importing"; message: string }
+  | { type: "imported"; added: number; total: number; message?: string }
+  | { type: "import_error"; message: string }
   | { type: "all_done"; session_id: string }
   | { type: "keepalive" }
   | { type: "error"; message: string };

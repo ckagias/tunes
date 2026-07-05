@@ -2,10 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { openProgressStream } from "../api/progress";
 import type { ProgressEvent, TrackProgress } from "../types";
 
+export interface ImportStatus {
+  state: "importing" | "done" | "error";
+  added?: number;
+  total?: number;
+  message?: string;
+}
+
 interface DownloadProgressState {
   tracks: Map<string, TrackProgress>;
   zipFilename: string | null;
   isComplete: boolean;
+  importStatus: ImportStatus | null;
 }
 
 function reduce(
@@ -57,6 +65,25 @@ function reduce(
       break;
     case "zip_ready":
       return { ...state, tracks, zipFilename: event.filename };
+    case "importing":
+      return { ...state, tracks, importStatus: { state: "importing" } };
+    case "imported":
+      return {
+        ...state,
+        tracks,
+        importStatus: {
+          state: "done",
+          added: event.added,
+          total: event.total,
+          message: event.message,
+        },
+      };
+    case "import_error":
+      return {
+        ...state,
+        tracks,
+        importStatus: { state: "error", message: event.message },
+      };
     case "all_done":
       return { ...state, tracks, isComplete: true };
     default:
@@ -72,13 +99,14 @@ export function useDownloadProgress(sessionId: string | null) {
     tracks: new Map(),
     zipFilename: null,
     isComplete: false,
+    importStatus: null,
   });
   const stateRef = useRef(state);
   stateRef.current = state;
 
   useEffect(() => {
     // Reset even when sessionId is cleared, or a stale zipFilename could leak into the next session.
-    setState({ tracks: new Map(), zipFilename: null, isComplete: false });
+    setState({ tracks: new Map(), zipFilename: null, isComplete: false, importStatus: null });
 
     if (!sessionId) return;
 

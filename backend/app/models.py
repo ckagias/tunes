@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -33,7 +35,9 @@ class DownloadRequest(BaseModel):
     playlist_title: str = ""
     playlist_thumbnail: str = ""
     is_true_playlist: bool = False
-    session_id: str | None = None
+    session_id: Optional[str] = None
+    # None = defer to the server's AUTO_IMPORT_ITUNES setting; true/false overrides it.
+    auto_import: Optional[bool] = None
 
 
 class DownloadResponse(BaseModel):

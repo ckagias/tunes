@@ -12,6 +12,8 @@ const STYLES = {
   header: "mb-6",
   title: "text-2xl font-semibold tracking-tight",
   errorBanner: "bg-danger/10 text-danger text-sm rounded-lg px-4 py-3 mb-4",
+  autoImportRow: "flex items-center gap-2 mb-4",
+  autoImportLabel: "text-sm text-text-muted select-none",
 };
 
 type Phase = "idle" | "fetching-info" | "info-ready" | "downloading";
@@ -23,6 +25,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [autoImport, setAutoImport] = useState(false);
 
   const progressState = useDownloadProgress(sessionId);
 
@@ -86,6 +89,7 @@ export default function App() {
         playlist_title: isPlaylist ? info.title : "",
         playlist_thumbnail: isPlaylist ? info.thumbnail : "",
         is_true_playlist: info.is_true_playlist,
+        auto_import: autoImport,
       });
 
       setSessionId(response.session_id);
@@ -129,6 +133,18 @@ export default function App() {
               progress={progressState.tracks}
               selectable={selectable}
             />
+            {!sessionId && (
+              <label className={STYLES.autoImportRow}>
+                <input
+                  type="checkbox"
+                  checked={autoImport}
+                  onChange={(e) => setAutoImport(e.target.checked)}
+                />
+                <span className={STYLES.autoImportLabel}>
+                  Add to iTunes automatically (Windows only)
+                </span>
+              </label>
+            )}
             <DownloadPanel
               onStart={handleStartDownload}
               starting={starting}
@@ -138,6 +154,7 @@ export default function App() {
               zipFilename={progressState.zipFilename}
               isComplete={progressState.isComplete}
               tracks={progressState.tracks}
+              importStatus={progressState.importStatus}
               onReset={handleReset}
             />
           </>

@@ -1,6 +1,7 @@
 """Spotify source: tags/art come from Spotify's embed pages, audio comes from a matched YouTube Music track."""
 
 import re
+from typing import Optional
 
 from app.models import InfoResponse, TrackInfo
 from app.services import spotify_client
@@ -98,7 +99,7 @@ class SpotifySource(Source):
         music_dir: str,
         progress_hook,
         pp_hook,
-    ) -> str | None:
+    ) -> Optional[str]:
         meta = _track_metadata_cache.get(url, {})
         artist = meta.get("artist", "")
         # Primary artist only for the search query — a full "A, B, C" string dilutes match quality.

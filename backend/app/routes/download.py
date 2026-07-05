@@ -18,6 +18,7 @@ async def start_download(payload: DownloadRequest) -> DownloadResponse:
         playlist_title=payload.playlist_title,
         playlist_thumbnail=payload.playlist_thumbnail,
         is_true_playlist=payload.is_true_playlist,
+        auto_import=payload.auto_import,
     )
 
     return DownloadResponse(session_id=session.session_id, is_playlist=is_playlist)

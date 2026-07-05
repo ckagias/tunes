@@ -6,6 +6,7 @@ import re
 import threading
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 import yt_dlp
 import yt_dlp.utils
@@ -189,7 +190,7 @@ def _title_plausibly_matches(candidate_title: str, expected_title: str) -> bool:
     return norm_expected in norm_candidate or norm_candidate in norm_expected
 
 
-def resolve_best_search_result(search_url: str, expected_title: str = "") -> dict | None:
+def resolve_best_search_result(search_url: str, expected_title: str = "") -> Optional[dict]:
     """Probe the top search candidates in order, preferring one with a plausible title match and an album tag."""
     flat_opts = {**base_ydl_opts(), "extract_flat": True, "playlist_items": f"1-{SEARCH_CANDIDATES}"}
     try:
@@ -214,7 +215,7 @@ def resolve_best_search_result(search_url: str, expected_title: str = "") -> dic
     # Deprioritize (not drop) instrumental/karaoke/etc. variants — still better than no match.
     candidates.sort(key=lambda e: _is_undesirable_variant(e.get("title") or ""))
 
-    first_playable: dict | None = None
+    first_playable: Optional[dict] = None
     probe_opts = {**base_ydl_opts()}
     for entry in candidates:
         video_url = f"https://www.youtube.com/watch?v={entry['id']}"
@@ -233,7 +234,7 @@ def resolve_best_search_result(search_url: str, expected_title: str = "") -> dic
     return first_playable
 
 
-def resolve_download_target(url_or_search: str, expected_title: str = "") -> dict | None:
+def resolve_download_target(url_or_search: str, expected_title: str = "") -> Optional[dict]:
     """Resolve to a single concrete video info dict, shared by quality-probing and the actual download."""
     if "music.youtube.com/search" in url_or_search:
         return resolve_best_search_result(url_or_search, expected_title)
@@ -265,10 +266,10 @@ def download_with_overrides(
     music_dir: str,
     progress_hook,
     pp_hook,
-    overrides: dict | None = None,
-    thumbnail_url: str | None = None,
+    overrides: Optional[dict] = None,
+    thumbnail_url: Optional[str] = None,
     expected_title: str = "",
-) -> str | None:
+) -> Optional[str]:
     """
     Download+tag a track, optionally overriding tag fields and/or cover art
     before the postprocessors run (used by SpotifySource for real metadata).
@@ -368,7 +369,7 @@ class YouTubeSource(Source):
         music_dir: str,
         progress_hook,
         pp_hook,
-    ) -> str | None:
+    ) -> Optional[str]:
         return download_with_overrides(url, music_dir, progress_hook, pp_hook)
 
 

@@ -6,6 +6,7 @@ seam that lets new platforms be added later without touching routes.
 """
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from app.models import InfoResponse
 
@@ -36,7 +37,7 @@ class Source(ABC):
         music_dir: str,
         progress_hook,
         pp_hook,
-    ) -> str | None:
+    ) -> Optional[str]:
         """
         Download+tag a single track into music_dir, calling progress_hook /
         pp_hook as yt-dlp (or an equivalent backend) reports progress.
