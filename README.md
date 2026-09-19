@@ -2,7 +2,7 @@
 
 ### A self-hosted music downloader built with [yt-dlp](https://github.com/yt-dlp/yt-dlp), FastAPI, and React
 
-[About](#about) • [Features](#features) • [How it works](#how-it-works) • [Installation](#installation) • [Usage](#usage) • [Automatic iTunes import](#automatic-itunes-import-optional) • [Webhook telemetry](#webhook-telemetry-optional) • [Legal and intended use](#legal-and-intended-use) • [Project layout](#project-layout) • [Dependencies](#dependencies) • [Contributing](#contributing) • [License](#license)
+[About](#about) • [Features](#features) • [How it works](#how-it-works) • [Installation](#installation) • [Usage](#usage) • [Automatic iTunes import](#automatic-itunes-import-optional) • [Docker deployment](#docker-deployment-optional) • [Webhook telemetry](#webhook-telemetry-optional) • [Legal and intended use](#legal-and-intended-use) • [Project layout](#project-layout) • [Dependencies](#dependencies) • [Contributing](#contributing) • [License](#license)
 
 ---
 
@@ -289,6 +289,23 @@ the box.)
 When it runs, Tunes copies the download into `LIBRARY_DIR` and adds it to your iTunes
 library, including creating a matching playlist for a playlist download, in the right
 track order. To sync a connected iPhone afterward, click Sync in iTunes yourself.
+
+---
+
+## Docker deployment (optional)
+
+`Dockerfile` and `docker-compose.yml` are included for running Tunes on a home server. It builds the frontend, packages it with the FastAPI backend, and serves both behind an Nginx reverse proxy on one port.
+
+```bash
+docker compose up -d --build
+```
+
+The app runs at `http://localhost:8080`. Session temp files live on a 4GB `tmpfs` inside the container, so nothing touches disk.
+
+Notes:
+
+- Automatic iTunes import doesn't apply here. That feature is Windows-only regardless of how the backend runs.
+- Set `ALLOWED_ORIGINS`, `WEBHOOK_URL`, and `TELEMETRY_ENABLED` via a `.env` file next to `docker-compose.yml`, same as running natively.
 
 ---
 

@@ -1,0 +1,21 @@
+name: tunes
+
+services:
+  tunes:
+    build: .
+    image: tunes:local
+    container_name: tunes
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-*}"
+      WEBHOOK_URL: "${WEBHOOK_URL:-}"
+      TELEMETRY_ENABLED: "${TELEMETRY_ENABLED:-}"
+    tmpfs:
+      - /tmp:size=4g,mode=1777
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
