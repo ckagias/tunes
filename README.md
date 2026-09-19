@@ -55,6 +55,8 @@ This meaningfully cuts down wrong-song downloads and "Output file not found" fai
 **Other caveats:**
 
 - This relies on Spotify continuing to server-render track, album, and playlist data into the embed page's HTML. If Spotify changes the page format, Spotify links will stop resolving until this is updated. Plain YouTube links are unaffected either way.
+- The embed page only server-renders the first ~100 tracks of a playlist or album, so larger ones currently come back truncated. There's no pagination exposed on this page to fetch the rest.
+- Spotify's official Web API (`api.spotify.com/v1`) isn't used, and going through it isn't a clean fix either: as of Spotify's mid-2026 quota overhaul, anonymous/Development Mode access is throttled by a shared per-developer-account quota, and Extended Quota access is restricted to registered businesses with 250k+ monthly active users, well out of reach for a self-hosted personal tool.
 - Spotify's embed pages don't expose per-track genre, so Spotify-sourced downloads don't get a genre tag, and YouTube's own generic "Music" genre fallback is explicitly suppressed rather than used as a stand-in.
 - Album name is only available when the link itself is an album, or when Spotify's own data for that track's containing collection includes it. A standalone track or playlist link doesn't always carry the album name from Spotify, so it may fall back to whatever YouTube's matched video provides, if anything.
 - Album artist is always set from the track's primary artist, not the full featured-artist list, so tracks from the same album group correctly in players like iTunes and Music.app even when individual tracks credit different guest features.
@@ -320,6 +322,8 @@ It never blocks a download. If the webhook is slow or unreachable, the request j
 ## Legal and intended use
 
 Tunes is intended for personal library management: downloading audio you already have the right to listen to, for offline personal use, in the same spirit as tools like yt-dlp. It is not intended for redistribution, resale, or circumventing paid streaming services. You're responsible for complying with the terms of service of whatever platform you're downloading from, and with your local copyright law. Tunes doesn't host, cache, or redistribute any content itself. Everything is ephemeral, kept only for the current session, and deleted once you start a new lookup or leave the page.
+
+Spotify metadata is fetched by parsing `open.spotify.com/embed/...` pages (see [Spotify links](#spotify-links) above) rather than through an authenticated Spotify Developer app. Spotify's current user guidelines prohibit automated scraping of their service, so this is a Terms of Service gray area, not sanctioned API use. It's low-volume, read-only metadata access with no login involved, and Spotify itself now appears to be actively rate-limiting this path (see the caveats above), so treat it as something that can break or get throttled at any time, not a guaranteed-stable integration.
 
 ---
 
