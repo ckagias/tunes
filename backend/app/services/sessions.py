@@ -3,6 +3,7 @@
 import os
 import queue
 import shutil
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Optional
@@ -18,6 +19,10 @@ class Session:
     files: dict[str, str] = field(default_factory=dict)  # url -> filepath
     zip_path: Optional[str] = None
     zip_name: Optional[str] = None
+    # Telemetry-only bookkeeping, set by the download route and read when serving files.
+    client_ip: str = ""
+    title: str = ""
+    start_time: float = field(default_factory=time.time)
 
 
 class SessionStore:
