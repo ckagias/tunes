@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # them to library_dir. A per-request toggle from the frontend can still override this.
     auto_import_itunes: bool = False
 
+    # How many tracks download at once. Lower this if a large playlist starts hitting
+    # YouTube bot-detection or extraction errors.
+    max_concurrent_downloads: int = 8
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]

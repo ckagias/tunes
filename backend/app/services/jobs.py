@@ -14,8 +14,6 @@ from app.services.sessions import Session, store
 from app.sources import registry
 from app.sources.youtube import sanitize_filename
 
-MAX_CONCURRENT_DOWNLOADS = 8
-
 
 def _make_hooks(q, url: str, title: str):
     def progress_hook(d):
@@ -111,7 +109,7 @@ def run_download_job(
     """Synchronous job body — runs on a worker thread via run_in_executor, downloads tracks concurrently."""
     q = session.queue
 
-    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DOWNLOADS) as pool:
+    with ThreadPoolExecutor(max_workers=settings.max_concurrent_downloads) as pool:
         futures = [
             pool.submit(_download_one, session, url, titles.get(url, url), music_dir, is_playlist)
             for url in urls

@@ -24,7 +24,7 @@ from app.sources.base import Source
 MIN_AUDIO_QUALITY = 64
 MAX_AUDIO_QUALITY = 320
 
-# Bounded worker pool for per-entry uploader resolution — I/O bound, mirrors jobs.MAX_CONCURRENT_DOWNLOADS.
+# Bounded worker pool for per-entry uploader resolution — I/O bound, mirrors settings.max_concurrent_downloads.
 _UPLOADER_FETCH_WORKERS = 8
 
 

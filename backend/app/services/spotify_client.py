@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-# Bounded pool for concurrent per-track cover art fetches in get_playlist — I/O bound, mirrors jobs.MAX_CONCURRENT_DOWNLOADS.
+# Bounded pool for concurrent per-track cover art fetches in get_playlist — I/O bound, mirrors settings.max_concurrent_downloads.
 _THUMBNAIL_FETCH_WORKERS = 8
 
 _HEADERS = {
