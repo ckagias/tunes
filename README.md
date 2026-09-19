@@ -2,7 +2,7 @@
 
 ### A self-hosted music downloader built with [yt-dlp](https://github.com/yt-dlp/yt-dlp), FastAPI, and React
 
-[About](#about) • [Features](#features) • [How it works](#how-it-works) • [Installation](#installation) • [Usage](#usage) • [Automatic iTunes import](#automatic-itunes-import-optional) • [Legal and intended use](#legal-and-intended-use) • [Project layout](#project-layout) • [Dependencies](#dependencies) • [Contributing](#contributing) • [License](#license)
+[About](#about) • [Features](#features) • [How it works](#how-it-works) • [Installation](#installation) • [Usage](#usage) • [Automatic iTunes import](#automatic-itunes-import-optional) • [Webhook telemetry](#webhook-telemetry-optional) • [Legal and intended use](#legal-and-intended-use) • [Project layout](#project-layout) • [Dependencies](#dependencies) • [Contributing](#contributing) • [License](#license)
 
 ---
 
@@ -289,6 +289,14 @@ the box.)
 When it runs, Tunes copies the download into `LIBRARY_DIR` and adds it to your iTunes
 library, including creating a matching playlist for a playlist download, in the right
 track order. To sync a connected iPhone afterward, click Sync in iTunes yourself.
+
+---
+
+## Webhook telemetry (optional)
+
+Off by default. Set `WEBHOOK_URL` in `backend/.env` and Tunes posts a JSON payload to that URL for four events: `request_started`, `mp3_downloaded`, `zip_downloaded`, `session_ended`. Each payload has the event name, client IP, title, item type, track count, size, and duration where applicable.
+
+It never blocks a download. If the webhook is slow or unreachable, the request just gets dropped after a short timeout. See `backend/.env.example` for the variables.
 
 ---
 
