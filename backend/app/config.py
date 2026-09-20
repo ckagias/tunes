@@ -1,8 +1,15 @@
+import logging
 import tempfile
 from pathlib import Path
 from typing import Optional
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+MIN_CONCURRENT_DOWNLOADS = 1
+MAX_CONCURRENT_DOWNLOADS_CAP = 16
 
 
 class Settings(BaseSettings):
@@ -19,8 +26,23 @@ class Settings(BaseSettings):
     auto_import_itunes: bool = False
 
     # How many tracks download at once. Lower this if a large playlist starts hitting
-    # YouTube bot-detection or extraction errors.
+    # YouTube bot-detection or extraction errors. Clamped to
+    # [MIN_CONCURRENT_DOWNLOADS, MAX_CONCURRENT_DOWNLOADS_CAP] to avoid tripping bot detection.
     max_concurrent_downloads: int = 8
+
+    @field_validator("max_concurrent_downloads")
+    @classmethod
+    def _clamp_max_concurrent_downloads(cls, value: int) -> int:
+        clamped = max(MIN_CONCURRENT_DOWNLOADS, min(value, MAX_CONCURRENT_DOWNLOADS_CAP))
+        if clamped != value:
+            logger.warning(
+                "MAX_CONCURRENT_DOWNLOADS=%s is out of range [%s, %s]; clamped to %s",
+                value,
+                MIN_CONCURRENT_DOWNLOADS,
+                MAX_CONCURRENT_DOWNLOADS_CAP,
+                clamped,
+            )
+        return clamped
 
     @property
     def allowed_origins_list(self) -> list[str]:
